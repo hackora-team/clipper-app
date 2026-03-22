@@ -1,0 +1,30 @@
+{
+	"name": "monorepo-baseproject",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"admin:dev": "pnpm --filter=admin run dev",
+		"api:dev": "pnpm --filter=api run dev",
+		"platform:dev": "pnpm --filter=platform run dev",
+		"ui:dev": "pnpm --filter=@monorepo/ui run dev",
+		"dev": "pnpm --parallel --filter=admin -filter=platform -filter=api --filter=@monorepo/ui run dev",
+		"lint": "pnpx @biomejs/biome check",
+		"lint:fix": "pnpx @biomejs/biome check --write --unsafe",
+		"prepare": "husky"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"packageManager": "pnpm@10.22.0",
+	"devDependencies": {
+		"@biomejs/biome": "2.4.6",
+		"husky": "^9.1.7"
+	},
+	"dependencies": {
+		"@prisma/adapter-pg": "^7.4.2",
+		"@prisma/client": "^7.4.2",
+		"dotenv-cli": "^11.0.0",
+		"prisma": "^7.4.2"
+	}
+}
