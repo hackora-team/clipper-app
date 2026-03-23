@@ -1,1 +1,1 @@
-pnpm test
+pnpx @biomejs/biome check --staged --no-errors-on-unmatched

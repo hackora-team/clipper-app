@@ -11,12 +11,22 @@
 		"dev": "pnpm --parallel --filter=admin -filter=platform -filter=api --filter=@monorepo/ui run dev",
 		"lint": "pnpx @biomejs/biome check",
 		"lint:fix": "pnpx @biomejs/biome check --write --unsafe",
+		"test": "pnpm --filter=admin --filter=platform run test",
 		"prepare": "husky"
 	},
 	"keywords": [],
 	"author": "",
 	"license": "ISC",
 	"packageManager": "pnpm@10.22.0",
+	"pnpm": {
+		"onlyBuiltDependencies": [
+			"@parcel/watcher",
+			"@prisma/engines",
+			"esbuild",
+			"prisma",
+			"lightningcss"
+		]
+	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.6",
 		"husky": "^9.1.7"

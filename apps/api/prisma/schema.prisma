@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -6,4 +5,207 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ─── Auth & Billing ────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  name          String?
+
+  // Credit balance (denormalized for fast reads)
+  creditBalance Int      @default(0)
+
+  // Timestamps
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  subscription        Subscription?
+  creditTransactions  CreditTransaction[]
+  jobs                Job[]
+}
+
+model Plan {
+  id          String   @id @default(cuid())
+  name        String   @unique         // "free", "pro", "business"
+  displayName String                   // "Free", "Pro", "Business"
+
+  // Feature limits
+  maxVideoMinutes     Int              // max upload duration per video in minutes
+  maxFileSize         Int              // max upload size in MB
+  maxClipsPerVideo    Int              // 3 for free, 5 for pro, 10 for business
+  priorityQueue       Boolean @default(false) // skip the queue
+  customSubtitleStyle Boolean @default(false) // post-MVP feature flag
+
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  subscriptionOptions SubscriptionOption[]
+  subscriptions       Subscription[]
+}
+
+model SubscriptionOption {
+  id          String   @id @default(cuid())
+  planId      String
+  plan        Plan     @relation(fields: [planId], references: [id])
+
+  creditsPerMonth  Int                 // e.g. 20, 40
+  pricePerMonth    Int                 // in IDR, e.g. 20000, 40000
+  label            String              // e.g. "20 credits/month", "40 credits/month"
+  active           Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+
+  // Relations
+  subscriptions Subscription[]
+
+  @@index([planId])
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id])
+  optionId  String
+  option    SubscriptionOption @relation(fields: [optionId], references: [id])
+
+  // Duitku
+  duitkuCustomerEmail   String?
+  status                SubscriptionStatus @default(ACTIVE)
+
+  // Credits
+  creditsPerMonth       Int              // snapshot from option at time of subscription
+  creditsRemaining      Int              // credits left this billing cycle
+
+  // Billing period
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([planId])
+  @@index([optionId])
+}
+
+model CreditTransaction {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      CreditTransactionType  // SUBSCRIPTION_RENEWAL, USAGE, REFUND, SIGNUP_BONUS
+  amount    Int                    // positive = credit added, negative = credit spent
+  balance   Int                    // balance AFTER this transaction
+
+  // Context
+  description           String   // e.g. "Monthly renewal: 20 credits (Pro)"
+  jobId                 String?  // linked job (for USAGE type)
+  duitkuMerchantOrderId String?  // linked Duitku payment
+  duitkuReference       String?  // Duitku reference number
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+}
+
+enum CreditTransactionType {
+  SUBSCRIPTION_RENEWAL
+  USAGE
+  REFUND
+  SIGNUP_BONUS
+}
+
+// ─── Video Processing ──────────────────────────────────────
+
+model Job {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    JobStatus @default(UPLOADED)
+
+  // Input
+  originalFilename  String
+  originalPath      String    // Path to uploaded video
+  duration          Float?    // Video duration in seconds
+  fileSize          Int       // File size in bytes
+
+  // Credit cost
+  creditsCharged    Int       @default(0)
+
+  // Processing artifacts
+  audioPath         String?   // Extracted audio path
+  transcript        Json?     // Full timestamped transcript
+
+  // Progress tracking
+  currentStep       String?   // Current processing step name
+  progress          Int       @default(0) // 0-100
+  errorMessage      String?
+
+  // Rate limiting
+  ipAddress         String
+
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  completedAt       DateTime?
+
+  // Relations
+  clips             Clip[]
+
+  @@index([userId, createdAt])
+  @@index([ipAddress, createdAt])
+}
+
+model Clip {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  // Clip metadata from AI
+  title       String
+  description String
+  startTime   Float     // Start time in seconds
+  endTime     Float     // End time in seconds
+  viralScore  Int       // 1-10 score
+
+  // Output
+  outputPath  String?   // Path to rendered clip with subtitles
+  status      ClipStatus @default(PENDING)
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+
+  @@index([jobId])
+}
+
+enum JobStatus {
+  UPLOADED
+  EXTRACTING_AUDIO
+  TRANSCRIBING
+  DETECTING_CLIPS
+  RENDERING
+  COMPLETED
+  FAILED
+}
+
+enum ClipStatus {
+  PENDING
+  RENDERING
+  COMPLETED
+  FAILED
 }
