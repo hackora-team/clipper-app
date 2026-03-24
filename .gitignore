@@ -45,3 +45,7 @@ lerna-debug.log*
 
 
 **/generated/prisma
+
+# uploads
+apps/api/uploads/*
+!apps/api/uploads/.gitkeep
