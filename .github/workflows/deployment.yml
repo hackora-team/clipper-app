@@ -1,0 +1,14 @@
+name: "CI/CD"
+
+on:
+    push:
+        branches:
+            - main
+
+
+jobs:
+    check:
+        runs-on: ubuntu-latest
+        steps:
+            - name: "Test CI/CD"
+              run: echo "Test CI/CD"
