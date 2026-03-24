@@ -1,13 +1,17 @@
 name: "CI/CD"
 
 on:
+    pull_request:
+        branches:
+            - main
     push:
         branches:
             - main
 
 
 jobs:
-    check:
+    pr-check:
+        if: github.event_name == 'pull_request'
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
@@ -24,4 +28,24 @@ jobs:
             - name: Lint
               run: pnpm lint
         
+    deploy:
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: pnpm/action-setup@v4
+              with:
+                version: 10.22.0
+
+            - uses: actions/setup-node@v4
+
+            - name: Install Dependencies
+              run: pnpm install
+
+            - name: Lint
+              run: pnpm lint     
+
+            - name: Deploy to server
+              run: echo "Deploying to server [MOCK]"   
 
