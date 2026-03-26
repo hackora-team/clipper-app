@@ -1,0 +1,52 @@
+import type { Job } from "bullmq";
+import { prisma } from "../../utils/prisma";
+import { detectViralClips } from "../../services/clip-detection.service";
+import { videoQueue, JOB_NAMES } from "../../lib/queue";
+import { emitJobEvent } from "../../lib/events";
+import type { DetectClipsPayload } from "../../types/queue";
+import type { WordTimestamp } from "../../services/transcription.service";
+
+export async function detectClipsProcessor(job: Job): Promise<void> {
+	const { jobId } = job.data as DetectClipsPayload;
+
+	await prisma.job.update({
+		where: { id: jobId },
+		data: { status: "DETECTING_CLIPS" },
+	});
+	emitJobEvent({ jobId, status: "DETECTING_CLIPS", message: "AI is finding the best moments..." });
+
+	const dbJob = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
+	const transcript = dbJob.transcript as { text: string; words: WordTimestamp[] };
+
+	const detectedClips = await detectViralClips(transcript.words);
+
+	await prisma.job.update({
+		where: { id: jobId },
+		data: { status: "RENDERING" },
+	});
+	emitJobEvent({ jobId, status: "RENDERING", message: "Rendering clips..." });
+
+	for (const clip of detectedClips) {
+		const duration = clip.endTime - clip.startTime;
+		const dbClip = await prisma.clip.create({
+			data: {
+				jobId,
+				title: clip.title,
+				description: clip.description,
+				startTime: clip.startTime,
+				endTime: clip.endTime,
+				duration,
+				viralScore: clip.viralScore,
+				status: "PENDING",
+			},
+		});
+
+		await videoQueue.add(JOB_NAMES.RENDER_CLIP, {
+			jobId,
+			clipId: dbClip.id,
+			videoPath: dbJob.filePath,
+			startTime: clip.startTime,
+			endTime: clip.endTime,
+		});
+	}
+}

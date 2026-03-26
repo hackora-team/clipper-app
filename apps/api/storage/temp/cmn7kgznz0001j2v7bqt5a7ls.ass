@@ -1,0 +1,31 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,72,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,50,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.02,0:00:03.47,Default,,0,0,0,,Di tengah era modernitas para miliarder biasanya
+Dialogue: 0,0:00:03.47,0:00:06.76,Default,,0,0,0,,membangun citra diri layaknya selebritas Namun nama
+Dialogue: 0,0:00:06.76,0:00:09.68,Default,,0,0,0,,Robert Budi Hartono dan Michael Bambang Hartono
+Dialogue: 0,0:00:09.68,0:00:11.81,Default,,0,0,0,,justru berdiri dalam paradoks kesunyian
+Dialogue: 0,0:00:12.50,0:00:14.86,Default,,0,0,0,,Mereka konsisten menempati posisi orang terkaya di
+Dialogue: 0,0:00:14.86,0:00:17.71,Default,,0,0,0,,Indonesia tapi hampir tidak muncul dalam sorotan
+Dialogue: 0,0:00:17.71,0:00:18.04,Default,,0,0,0,,media
+Dialogue: 0,0:00:18.55,0:00:20.52,Default,,0,0,0,,jarang berbicara di ruang publik dan tidak
+Dialogue: 0,0:00:20.52,0:00:23.68,Default,,0,0,0,,membangun branding personal seperti kebanyakan miliarder global
+Dialogue: 0,0:00:24.15,0:00:26.91,Default,,0,0,0,,Kekuasaan ekonomi mereka bekerja seperti invisible power
+Dialogue: 0,0:00:26.91,0:00:28.91,Default,,0,0,0,,yang mengakar dalam struktur bisnis
+Dialogue: 0,0:00:29.50,0:00:31.25,Default,,0,0,0,,sistem keuangan dan arus kapital yang bergerak
+Dialogue: 0,0:00:31.25,0:00:31.74,Default,,0,0,0,,diam diam
+Dialogue: 0,0:00:32.31,0:00:34.59,Default,,0,0,0,,Bagaimana mungkin di dunia yang terobsesi pada
+Dialogue: 0,0:00:34.59,0:00:37.93,Default,,0,0,0,,eksposur dan personal branding Bagaimana sebenarnya dua
+Dialogue: 0,0:00:37.93,0:00:39.95,Default,,0,0,0,,sosok yang nyaris tidak terlihat ini justru
+Dialogue: 0,0:00:39.95,0:00:42.59,Default,,0,0,0,,bisa menguasai puncak kekayaan nasional Nah bersama
+Dialogue: 0,0:00:42.59,0:00:45.77,Default,,0,0,0,,kamar film mari kita memahami bagaimana Hartono
+Dialogue: 0,0:00:45.77,0:00:48.00,Default,,0,0,0,,bersaudara menjadi sangat kaya raya
