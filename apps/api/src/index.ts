@@ -1,11 +1,11 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { initStorage } from "./services/ffmpeg.service";
 import { createWorker } from "./lib/worker";
-import { startCronJobs } from "./services/cron.service";
-import { jobRoute } from "./routes/job.route";
 import { clipRoute } from "./routes/clip.route";
+import { jobRoute } from "./routes/job.route";
+import { startCronJobs } from "./services/cron.service";
+import { initStorage } from "./services/ffmpeg.service";
 
 const app = new Hono();
 
@@ -28,12 +28,9 @@ async function bootstrap() {
 	createWorker();
 	startCronJobs();
 
-	serve(
-		{ fetch: app.fetch, port: 8000 },
-		(info) => {
-			console.log(`Server running on http://localhost:${info.port}`);
-		},
-	);
+	serve({ fetch: app.fetch, port: 8000 }, (info) => {
+		console.log(`Server running on http://localhost:${info.port}`);
+	});
 }
 
 bootstrap().catch(console.error);

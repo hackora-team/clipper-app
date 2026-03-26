@@ -1,10 +1,10 @@
-import { Worker } from "bullmq";
-import { redis } from "./redis";
-import { extractAudioProcessor } from "../queue/processors/extract-audio";
-import { transcribeProcessor } from "../queue/processors/transcribe";
-import { detectClipsProcessor } from "../queue/processors/detect-clips";
-import { renderClipProcessor } from "../queue/processors/render-clip";
 import type { Job } from "bullmq";
+import { Worker } from "bullmq";
+import { detectClipsProcessor } from "../queue/processors/detect-clips";
+import { extractAudioProcessor } from "../queue/processors/extract-audio";
+import { renderClipProcessor } from "../queue/processors/render-clip";
+import { transcribeProcessor } from "../queue/processors/transcribe";
+import { redis } from "./redis";
 
 export function createWorker() {
 	const worker = new Worker(

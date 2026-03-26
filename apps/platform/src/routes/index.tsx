@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Sparkles, Zap, Captions } from "lucide-react";
-import { VideoUpload } from "../components/video-upload";
+import { Captions, Sparkles, Zap } from "lucide-react";
 import { RecentJobs } from "../components/recent-jobs";
+import { VideoUpload } from "../components/video-upload";
 
 export const Route = createFileRoute("/")({ component: HomePage });
 
@@ -21,8 +21,8 @@ function HomePage() {
 						</span>
 					</h1>
 					<p className="text-gray-400 text-lg max-w-xl mx-auto">
-						Upload any long-form video. AI finds the most engaging moments,
-						cuts them, and burns in subtitles automatically.
+						Upload any long-form video. AI finds the most engaging moments, cuts
+						them, and burns in subtitles automatically.
 					</p>
 				</div>
 

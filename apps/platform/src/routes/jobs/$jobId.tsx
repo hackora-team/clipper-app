@@ -1,11 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Download, Clock, Loader } from "lucide-react";
-import { useJob } from "../../hooks/use-jobs";
-import { useJobEvents } from "../../hooks/use-job-events";
-import { JobProgress } from "../../components/job-progress";
+import { ArrowLeft, Clock, Download, Loader } from "lucide-react";
 import { ClipCard } from "../../components/clip-card";
-import { formatDate } from "../../lib/utils";
+import { JobProgress } from "../../components/job-progress";
+import { useJobEvents } from "../../hooks/use-job-events";
+import { useJob } from "../../hooks/use-jobs";
 import { getApiUrl } from "../../lib/api";
+import { formatDate } from "../../lib/utils";
 
 export const Route = createFileRoute("/jobs/$jobId")({
 	component: JobDetailPage,
@@ -30,7 +30,10 @@ function JobDetailPage() {
 			<div className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
 				<div className="text-center">
 					<p className="text-gray-400 mb-4">Job not found</p>
-					<Link to="/" className="text-purple-400 hover:text-purple-300 text-sm">
+					<Link
+						to="/"
+						className="text-purple-400 hover:text-purple-300 text-sm"
+					>
 						← Back to home
 					</Link>
 				</div>
@@ -57,7 +60,9 @@ function JobDetailPage() {
 						<ArrowLeft className="w-4 h-4" />
 					</Link>
 					<div className="min-w-0">
-						<h1 className="font-bold text-white text-lg truncate">{job.fileName}</h1>
+						<h1 className="font-bold text-white text-lg truncate">
+							{job.fileName}
+						</h1>
 						<p className="text-xs text-gray-500 flex items-center gap-1">
 							<Clock className="w-3 h-3" />
 							{formatDate(job.createdAt)}

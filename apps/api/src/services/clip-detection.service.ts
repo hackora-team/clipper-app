@@ -58,7 +58,8 @@ export async function detectViralClips(
 	if (!content) throw new Error("No response from GPT-4o");
 
 	const parsed = JSON.parse(content) as { clips: DetectedClip[] };
-	if (!Array.isArray(parsed.clips)) throw new Error("Invalid response format from GPT-4o");
+	if (!Array.isArray(parsed.clips))
+		throw new Error("Invalid response format from GPT-4o");
 
 	return parsed.clips.filter(
 		(clip) =>

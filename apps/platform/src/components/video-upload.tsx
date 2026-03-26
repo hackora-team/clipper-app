@@ -1,10 +1,10 @@
+import { useNavigate } from "@tanstack/react-router";
+import { AlertCircle, Film, Loader, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { useNavigate } from "@tanstack/react-router";
-import { Upload, Loader, Film, AlertCircle } from "lucide-react";
+import { useRecentJobs } from "../hooks/use-recent-jobs";
 import { uploadVideo } from "../lib/api";
 import { formatFileSize } from "../lib/utils";
-import { useRecentJobs } from "../hooks/use-recent-jobs";
 
 const ACCEPTED_TYPES = {
 	"video/mp4": [".mp4"],

@@ -1,10 +1,10 @@
-import { useState } from "react";
 import { ChevronDown, ChevronUp, Clock, Download } from "lucide-react";
-import { ViralScoreBadge } from "./viral-score-badge";
-import { ClipPlayer } from "./clip-player";
-import { formatDuration } from "../lib/utils";
-import { getApiUrl } from "../lib/api";
+import { useState } from "react";
 import type { Clip } from "../hooks/use-jobs";
+import { getApiUrl } from "../lib/api";
+import { formatDuration } from "../lib/utils";
+import { ClipPlayer } from "./clip-player";
+import { ViralScoreBadge } from "./viral-score-badge";
 
 interface ClipCardProps {
 	clip: Clip;

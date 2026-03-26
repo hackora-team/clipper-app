@@ -1,7 +1,7 @@
+import { Download, Play } from "lucide-react";
 import { useRef } from "react";
-import { Play, Download } from "lucide-react";
-import { getApiUrl } from "../lib/api";
 import type { Clip } from "../hooks/use-jobs";
+import { getApiUrl } from "../lib/api";
 
 interface ClipPlayerProps {
 	clip: Clip;

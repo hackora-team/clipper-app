@@ -1,7 +1,7 @@
-import { Hono } from "hono";
 import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import { Readable } from "node:stream";
+import { Hono } from "hono";
 import { prisma } from "../utils/prisma";
 
 export const clipRoute = new Hono();
@@ -19,7 +19,7 @@ clipRoute.get("/:id/stream", async (c) => {
 		where: { id: c.req.param("id") },
 	});
 
-	if (!clip || !clip.outputPath || clip.status !== "COMPLETED") {
+	if (!clip?.outputPath || clip.status !== "COMPLETED") {
 		return c.json({ error: "Clip not available" }, 404);
 	}
 
@@ -55,7 +55,7 @@ clipRoute.get("/:id/download", async (c) => {
 		where: { id: c.req.param("id") },
 	});
 
-	if (!clip || !clip.outputPath || clip.status !== "COMPLETED") {
+	if (!clip?.outputPath || clip.status !== "COMPLETED") {
 		return c.json({ error: "Clip not available" }, 404);
 	}
 
@@ -63,10 +63,7 @@ clipRoute.get("/:id/download", async (c) => {
 	if (!stat) return c.json({ error: "File not found" }, 404);
 
 	const safeTitle = clip.title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
-	c.header(
-		"Content-Disposition",
-		`attachment; filename="${safeTitle}.mp4"`,
-	);
+	c.header("Content-Disposition", `attachment; filename="${safeTitle}.mp4"`);
 	c.header("Content-Type", "video/mp4");
 	c.header("Content-Length", stat.size.toString());
 

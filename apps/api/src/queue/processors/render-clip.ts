@@ -1,12 +1,12 @@
-import type { Job } from "bullmq";
 import fs from "node:fs/promises";
-import { prisma } from "../../utils/prisma";
+import type { Job } from "bullmq";
+import { emitJobEvent } from "../../lib/events";
+import { cleanupClipArtifacts } from "../../services/cleanup.service";
 import { cutVideoClip } from "../../services/clip-cutting.service";
 import { generateSubtitlesAndFinalizeClip } from "../../services/subtitle.service";
-import { cleanupClipArtifacts } from "../../services/cleanup.service";
-import { emitJobEvent } from "../../lib/events";
-import type { RenderClipPayload } from "../../types/queue";
 import type { WordTimestamp } from "../../services/transcription.service";
+import type { RenderClipPayload } from "../../types/queue";
+import { prisma } from "../../utils/prisma";
 
 export async function renderClipProcessor(job: Job): Promise<void> {
 	const { jobId, clipId, videoPath, startTime, endTime } =
@@ -19,7 +19,10 @@ export async function renderClipProcessor(job: Job): Promise<void> {
 
 	try {
 		const dbJob = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
-		const transcript = dbJob.transcript as { text: string; words: WordTimestamp[] };
+		const transcript = dbJob.transcript as {
+			text: string;
+			words: WordTimestamp[];
+		};
 
 		const wordsInRange = transcript.words.filter(
 			(w) => w.start >= startTime - 0.5 && w.start <= endTime + 0.5,

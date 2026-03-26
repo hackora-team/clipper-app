@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import { Clock, Trash2, ArrowRight } from "lucide-react";
-import { formatDate } from "../lib/utils";
+import { ArrowRight, Clock, Trash2 } from "lucide-react";
 import { useRecentJobs } from "../hooks/use-recent-jobs";
+import { formatDate } from "../lib/utils";
 
 export function RecentJobs() {
 	const { recentJobs, removeRecentJob } = useRecentJobs();
@@ -24,7 +24,9 @@ export function RecentJobs() {
 							<p className="text-sm text-white truncate font-medium">
 								{job.fileName}
 							</p>
-							<p className="text-xs text-gray-500">{formatDate(job.createdAt)}</p>
+							<p className="text-xs text-gray-500">
+								{formatDate(job.createdAt)}
+							</p>
 						</div>
 						<div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
 							<button

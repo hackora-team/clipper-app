@@ -1,10 +1,10 @@
 import type { Job } from "bullmq";
-import { prisma } from "../../utils/prisma";
-import { detectViralClips } from "../../services/clip-detection.service";
-import { videoQueue, JOB_NAMES } from "../../lib/queue";
 import { emitJobEvent } from "../../lib/events";
-import type { DetectClipsPayload } from "../../types/queue";
+import { JOB_NAMES, videoQueue } from "../../lib/queue";
+import { detectViralClips } from "../../services/clip-detection.service";
 import type { WordTimestamp } from "../../services/transcription.service";
+import type { DetectClipsPayload } from "../../types/queue";
+import { prisma } from "../../utils/prisma";
 
 export async function detectClipsProcessor(job: Job): Promise<void> {
 	const { jobId } = job.data as DetectClipsPayload;
@@ -13,10 +13,17 @@ export async function detectClipsProcessor(job: Job): Promise<void> {
 		where: { id: jobId },
 		data: { status: "DETECTING_CLIPS" },
 	});
-	emitJobEvent({ jobId, status: "DETECTING_CLIPS", message: "AI is finding the best moments..." });
+	emitJobEvent({
+		jobId,
+		status: "DETECTING_CLIPS",
+		message: "AI is finding the best moments...",
+	});
 
 	const dbJob = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
-	const transcript = dbJob.transcript as { text: string; words: WordTimestamp[] };
+	const transcript = dbJob.transcript as {
+		text: string;
+		words: WordTimestamp[];
+	};
 
 	const detectedClips = await detectViralClips(transcript.words);
 

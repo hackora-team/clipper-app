@@ -1,11 +1,11 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import path from "node:path";
-import fs from "node:fs/promises";
-import { prisma } from "../utils/prisma";
-import { videoQueue, JOB_NAMES } from "../lib/queue";
-import { jobEmitter, emitJobEvent } from "../lib/events";
+import { emitJobEvent, jobEmitter } from "../lib/events";
+import { JOB_NAMES, videoQueue } from "../lib/queue";
 import { getStoragePath } from "../services/ffmpeg.service";
+import { prisma } from "../utils/prisma";
 
 const MAX_UPLOAD_BYTES =
 	Number(process.env.MAX_UPLOAD_SIZE_MB ?? 500) * 1024 * 1024;
@@ -67,7 +67,11 @@ jobRoute.post("/", async (c) => {
 		videoPath: filePath,
 	});
 
-	emitJobEvent({ jobId: job.id, status: "PENDING", message: "Job created, processing will start shortly..." });
+	emitJobEvent({
+		jobId: job.id,
+		status: "PENDING",
+		message: "Job created, processing will start shortly...",
+	});
 
 	return c.json({ jobId: job.id }, 201);
 });

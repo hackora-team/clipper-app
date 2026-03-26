@@ -21,8 +21,7 @@ export const Route = createRootRoute({
 			{ title: "Clipper — AI Video Clipping" },
 			{
 				name: "description",
-				content:
-					"Turn long videos into viral clips automatically using AI",
+				content: "Turn long videos into viral clips automatically using AI",
 			},
 		],
 		links: [{ rel: "stylesheet", href: appCss }],
@@ -46,4 +45,3 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 		</html>
 	);
 }
-

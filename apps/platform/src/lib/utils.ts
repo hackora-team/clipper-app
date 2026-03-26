@@ -19,6 +19,8 @@ export function formatFileSize(bytes: number): string {
 	return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-export function clsx(...classes: (string | boolean | undefined | null)[]): string {
+export function clsx(
+	...classes: (string | boolean | undefined | null)[]
+): string {
 	return classes.filter(Boolean).join(" ");
 }
