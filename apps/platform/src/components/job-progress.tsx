@@ -9,8 +9,6 @@ const STEPS = [
 	{ key: "COMPLETED", label: "Complete" },
 ] as const;
 
-type StepKey = (typeof STEPS)[number]["key"];
-
 const STATUS_ORDER: Record<string, number> = {
 	PENDING: 0,
 	EXTRACTING_AUDIO: 1,
