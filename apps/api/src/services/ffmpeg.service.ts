@@ -108,22 +108,24 @@ export function splitAudio(
 		ffmpeg.ffprobe(inputPath, (err, metadata) => {
 			if (err) return reject(new Error(`ffprobe: ${err.message}`));
 			const totalDuration = metadata.format.duration ?? 0;
-			const chunks: string[] = [];
+			interface ChunkInfo {
+				path: string;
+				start: number;
+			}
+			const chunks: ChunkInfo[] = [];
 			let start = 0;
 			let index = 0;
 			while (start < totalDuration) {
-				const chunkPath = path.join(outputDir, `chunk_${index}.mp3`);
-				chunks.push({ path: chunkPath, start, index });
+				chunks.push({
+					path: path.join(outputDir, `chunk_${index}.mp3`),
+					start,
+				});
 				start += chunkDuration;
 				index++;
 			}
 			let completed = 0;
-			const chunkPaths: string[] = chunks.map((c) => c.path);
-			for (const chunk of chunks as {
-				path: string;
-				start: number;
-				index: number;
-			}[]) {
+			const chunkPaths = chunks.map((c) => c.path);
+			for (const chunk of chunks) {
 				ffmpeg(inputPath)
 					.inputOptions([`-ss ${chunk.start}`])
 					.outputOptions([`-t ${chunkDuration}`, "-acodec copy"])
