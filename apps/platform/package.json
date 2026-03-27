@@ -13,6 +13,7 @@
 		"with-env": "dotenv -e ../../.env --"
 	},
 	"dependencies": {
+		"@hono/node-server": "^1.19.11",
 		"@monorepo/ui": "workspace:*",
 		"@tailwindcss/vite": "^4.1.18",
 		"@tanstack/react-devtools": "latest",

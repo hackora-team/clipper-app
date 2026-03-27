@@ -22,4 +22,4 @@ WORKDIR /app/apps/platform
 
 EXPOSE 3000
 
-CMD ["/app/node_modules/.bin/vinxi", "start"]
+CMD ["node", "server.mjs"]

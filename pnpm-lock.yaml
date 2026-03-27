@@ -173,6 +173,9 @@ importers:
 
   apps/platform:
     dependencies:
+      '@hono/node-server':
+        specifier: ^1.19.11
+        version: 1.19.11(hono@4.12.5)
       '@monorepo/ui':
         specifier: workspace:*
         version: link:../../packages/ui
