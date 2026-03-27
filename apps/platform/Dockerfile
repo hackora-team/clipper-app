@@ -35,4 +35,4 @@ WORKDIR /app/apps/platform
 
 EXPOSE 3000
 
-CMD ["node_modules/.bin/vinxi", "start"]
+CMD ["/app/node_modules/.bin/vinxi", "start"]
