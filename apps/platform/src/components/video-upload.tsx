@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { AlertCircle, Film, Loader, Upload } from "lucide-react";
+import { AlertCircle, AlertTriangle, Film, Loader, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { useRecentJobs } from "../hooks/use-recent-jobs";
@@ -74,6 +74,20 @@ export function VideoUpload() {
 
 	return (
 		<div>
+			{uploading && (
+				<div className="mb-4 flex items-start gap-3 p-4 bg-amber-950/40 border border-amber-800/60 rounded-xl">
+					<AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+					<div>
+						<p className="text-amber-300 text-sm font-medium">
+							Jangan refresh atau tutup halaman ini!
+						</p>
+						<p className="text-amber-500/80 text-xs mt-0.5">
+							Upload sedang berlangsung. Jika halaman di-refresh, proses akan
+							berhenti dan perlu diulang dari awal.
+						</p>
+					</div>
+				</div>
+			)}
 			<div
 				{...getRootProps()}
 				className={`

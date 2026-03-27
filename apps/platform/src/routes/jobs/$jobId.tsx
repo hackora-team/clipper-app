@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Clock, Download, Loader } from "lucide-react";
+import { ArrowLeft, Clock, Download, Info, Loader } from "lucide-react";
 import { ClipCard } from "../../components/clip-card";
 import { JobProgress } from "../../components/job-progress";
 import { useJobEvents } from "../../hooks/use-job-events";
@@ -86,7 +86,19 @@ function JobDetailPage() {
 				)}
 
 				{isProcessing && (
-					<div className="mb-8">
+					<div className="mb-8 space-y-4">
+						<div className="flex items-start gap-3 p-4 bg-blue-950/40 border border-blue-800/60 rounded-xl">
+							<Info className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+							<div>
+								<p className="text-blue-300 text-sm font-medium">
+									Tab ini boleh ditutup atau ditinggal
+								</p>
+								<p className="text-blue-400/70 text-xs mt-0.5">
+									Proses berjalan di server dan akan tetap berlangsung. Buka
+									kembali halaman ini kapan saja untuk melihat hasilnya.
+								</p>
+							</div>
+						</div>
 						<JobProgress job={job} />
 					</div>
 				)}
