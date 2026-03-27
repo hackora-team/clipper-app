@@ -19,7 +19,7 @@ export async function renderClipProcessor(job: Job): Promise<void> {
 
 	try {
 		const dbJob = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
-		const transcript = dbJob.transcript as {
+		const transcript = dbJob.transcript as unknown as {
 			text: string;
 			words: WordTimestamp[];
 		};

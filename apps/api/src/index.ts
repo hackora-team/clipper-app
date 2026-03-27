@@ -9,10 +9,14 @@ import { initStorage } from "./services/ffmpeg.service";
 
 const app = new Hono();
 
+const corsOrigins = process.env.CORS_ORIGIN
+	? process.env.CORS_ORIGIN.split(",")
+	: ["http://localhost:3000", "http://localhost:4000"];
+
 app.use(
 	"*",
 	cors({
-		origin: ["http://localhost:3000", "http://localhost:4000"],
+		origin: corsOrigins,
 		allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 		allowHeaders: ["Content-Type", "Authorization"],
 	}),

@@ -22,7 +22,7 @@ export async function transcribeProcessor(job: Job): Promise<void> {
 
 	await prisma.job.update({
 		where: { id: jobId },
-		data: { transcript: result as unknown as Record<string, unknown> },
+		data: { transcript: result as unknown as object },
 	});
 
 	await videoQueue.add(JOB_NAMES.DETECT_CLIPS, { jobId });
