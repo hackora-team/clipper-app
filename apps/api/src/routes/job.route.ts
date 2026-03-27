@@ -1,5 +1,6 @@
 import { createWriteStream } from "node:fs";
 import path from "node:path";
+import type { HttpBindings } from "@hono/node-server";
 import busboy from "busboy";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -19,7 +20,7 @@ const ALLOWED_TYPES = [
 	"video/webm",
 ];
 
-export const jobRoute = new Hono();
+export const jobRoute = new Hono<{ Bindings: HttpBindings }>();
 
 jobRoute.post("/", async (c) => {
 	const contentType = c.req.header("content-type");
@@ -90,7 +91,9 @@ jobRoute.post("/", async (c) => {
 				stream.on("error", (err) => done(err));
 			});
 
-			bb.on("error", (err) => done(err));
+			bb.on("error", (err) =>
+				done(err instanceof Error ? err : new Error(String(err))),
+			);
 			incoming.pipe(bb);
 		});
 	} catch (err) {
