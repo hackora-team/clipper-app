@@ -1,5 +1,6 @@
-import fs from "node:fs/promises";
+import { createWriteStream } from "node:fs";
 import path from "node:path";
+import busboy from "busboy";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { emitJobEvent, jobEmitter } from "../lib/events";
@@ -10,52 +11,108 @@ import { prisma } from "../utils/prisma";
 const MAX_UPLOAD_BYTES =
 	Number(process.env.MAX_UPLOAD_SIZE_MB ?? 500) * 1024 * 1024;
 
+const ALLOWED_TYPES = [
+	"video/mp4",
+	"video/quicktime",
+	"video/x-msvideo",
+	"video/x-matroska",
+	"video/webm",
+];
+
 export const jobRoute = new Hono();
 
 jobRoute.post("/", async (c) => {
-	let body: Record<string, File | string>;
-	try {
-		body = (await c.req.parseBody()) as Record<string, File | string>;
-	} catch {
-		return c.json({ error: "Failed to parse request body" }, 400);
+	const contentType = c.req.header("content-type");
+	if (!contentType?.startsWith("multipart/form-data")) {
+		return c.json({ error: "Expected multipart/form-data" }, 400);
 	}
 
-	const file = body.video;
-	if (!file || typeof file === "string") {
+	const incoming = c.env.incoming as import("node:http").IncomingMessage;
+
+	type UploadResult = {
+		fileName: string;
+		mimeType: string;
+		filePath: string;
+	};
+
+	let result: UploadResult;
+	try {
+		result = await new Promise<UploadResult>((resolve, reject) => {
+			const bb = busboy({
+				headers: { "content-type": contentType },
+				limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+			});
+
+			let settled = false;
+			const done = (val: UploadResult | Error) => {
+				if (settled) return;
+				settled = true;
+				val instanceof Error ? reject(val) : resolve(val);
+			};
+
+			bb.on("file", (fieldName, stream, info) => {
+				if (fieldName !== "video") {
+					stream.resume();
+					return;
+				}
+
+				const { filename, mimeType } = info;
+				if (!ALLOWED_TYPES.includes(mimeType)) {
+					stream.resume();
+					done(
+						new Error("Invalid file type. Supported: MP4, MOV, AVI, MKV, WebM"),
+					);
+					return;
+				}
+
+				const ext = path.extname(filename) || ".mp4";
+				const tmpPath = path.join(
+					getStoragePath(),
+					"uploads",
+					`tmp_${Date.now()}${ext}`,
+				);
+				const ws = createWriteStream(tmpPath);
+
+				stream.on("limit", () => {
+					ws.destroy();
+					done(
+						new Error(
+							`File too large. Max size: ${process.env.MAX_UPLOAD_SIZE_MB ?? 500}MB`,
+						),
+					);
+				});
+
+				stream.pipe(ws);
+				ws.on("finish", () =>
+					done({ fileName: filename, mimeType, filePath: tmpPath }),
+				);
+				ws.on("error", (err) => done(err));
+				stream.on("error", (err) => done(err));
+			});
+
+			bb.on("error", (err) => done(err));
+			incoming.pipe(bb);
+		});
+	} catch (err) {
+		return c.json(
+			{ error: err instanceof Error ? err.message : "Upload failed" },
+			400,
+		);
+	}
+
+	if (!result) {
 		return c.json({ error: "No video file provided" }, 400);
 	}
 
-	const allowedTypes = [
-		"video/mp4",
-		"video/quicktime",
-		"video/x-msvideo",
-		"video/x-matroska",
-		"video/webm",
-	];
-	if (!allowedTypes.includes(file.type)) {
-		return c.json(
-			{ error: "Invalid file type. Supported: MP4, MOV, AVI, MKV, WebM" },
-			400,
-		);
-	}
-
-	if (file.size > MAX_UPLOAD_BYTES) {
-		return c.json(
-			{
-				error: `File too large. Max size: ${process.env.MAX_UPLOAD_SIZE_MB ?? 500}MB`,
-			},
-			400,
-		);
-	}
-
 	const job = await prisma.job.create({
-		data: { fileName: file.name, status: "PENDING" },
+		data: { fileName: result.fileName, status: "PENDING" },
 	});
 
-	const ext = path.extname(file.name) || ".mp4";
+	const ext = path.extname(result.fileName) || ".mp4";
 	const filePath = path.join(getStoragePath(), "uploads", `${job.id}${ext}`);
-	const buffer = Buffer.from(await file.arrayBuffer());
-	await fs.writeFile(filePath, buffer);
+	await import("node:fs/promises").then((fs) =>
+		fs.rename(result.filePath, filePath),
+	);
 
 	await prisma.job.update({
 		where: { id: job.id },
