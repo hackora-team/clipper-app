@@ -22,7 +22,7 @@ export interface TranscriptResult {
 	audioEvents: AudioEvent[];
 }
 
-const CHUNK_SIZE_BYTES = 2 * 1024 * 1024; // 2MB threshold
+const CHUNK_SIZE_BYTES = 10 * 1024 * 1024; // 10MB threshold
 const CHUNK_DURATION_SECONDS = 300; // 5-minute chunks
 
 async function transcribeChunk(
@@ -101,22 +101,14 @@ export async function transcribeAudio(
 	);
 
 	try {
-		const allWords: WordTimestamp[] = [];
-		const allEvents: AudioEvent[] = [];
-		const textParts: string[] = [];
-
-		for (let i = 0; i < chunkPaths.length; i++) {
-			const offsetSeconds = i * CHUNK_DURATION_SECONDS;
-			const chunk = await transcribeChunk(chunkPaths[i], offsetSeconds);
-			textParts.push(chunk.text);
-			allWords.push(...chunk.words);
-			allEvents.push(...chunk.audioEvents);
-		}
+		const results = await Promise.all(
+			chunkPaths.map((p, i) => transcribeChunk(p, i * CHUNK_DURATION_SECONDS)),
+		);
 
 		return {
-			text: textParts.join(" "),
-			words: allWords,
-			audioEvents: allEvents,
+			text: results.map((r) => r.text).join(" "),
+			words: results.flatMap((r) => r.words),
+			audioEvents: results.flatMap((r) => r.audioEvents),
 		};
 	} finally {
 		// Clean up chunk files
