@@ -32,9 +32,12 @@ async function bootstrap() {
 	createWorker();
 	startCronJobs();
 
-	serve({ fetch: app.fetch, port: 8000 }, (info) => {
-		console.log(`Server running on http://localhost:${info.port}`);
-	});
+	serve(
+		{ fetch: app.fetch, port: 8000, maxRequestBodySize: 500 * 1024 * 1024 },
+		(info) => {
+			console.log(`Server running on http://localhost:${info.port}`);
+		},
+	);
 }
 
 bootstrap().catch(console.error);

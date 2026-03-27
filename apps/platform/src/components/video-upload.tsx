@@ -46,9 +46,16 @@ export function VideoUpload() {
 	);
 
 	const onDrop = useCallback(
-		(accepted: File[], rejected: { errors: { message: string }[] }[]) => {
+		(
+			accepted: File[],
+			rejected: { errors: { code?: string; message: string }[] }[],
+		) => {
 			if (rejected.length > 0) {
-				const msg = rejected[0]?.errors[0]?.message ?? "Invalid file";
+				const err = rejected[0]?.errors[0];
+				const msg =
+					err?.code === "file-too-large"
+						? `File is too large. Maximum size is ${formatFileSize(MAX_SIZE)}.`
+						: (err?.message ?? "Invalid file");
 				setError(msg);
 				return;
 			}
