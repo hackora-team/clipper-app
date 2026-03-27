@@ -26,7 +26,7 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/platform/package.json ./apps/platform/
 
-RUN pnpm install --filter platform --frozen-lockfile --prod
+RUN pnpm install --filter platform --frozen-lockfile
 
 COPY --from=builder /app/apps/platform/dist ./apps/platform/dist
 
