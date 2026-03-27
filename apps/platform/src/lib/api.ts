@@ -24,33 +24,54 @@ export function getApiUrl(path: string): string {
 	return `${API_URL}${path}`;
 }
 
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB — must match server
+
 export async function uploadVideo(
 	file: File,
 	onProgress?: (pct: number) => void,
 ): Promise<{ jobId: string }> {
-	return new Promise((resolve, reject) => {
-		const formData = new FormData();
-		formData.append("video", file);
+	// Phase 1 — init
+	const init = await apiFetch<{ uploadId: string; totalChunks: number }>(
+		"/api/upload/init",
+		{
+			method: "POST",
+			body: JSON.stringify({
+				fileName: file.name,
+				mimeType: file.type,
+				fileSize: file.size,
+			}),
+		},
+	);
 
-		const xhr = new XMLHttpRequest();
-		xhr.open("POST", `${API_URL}/api/jobs`);
+	const { uploadId, totalChunks } = init;
 
-		xhr.upload.onprogress = (e) => {
-			if (e.lengthComputable && onProgress) {
-				onProgress(Math.round((e.loaded / e.total) * 100));
-			}
-		};
+	// Phase 2 — send chunks
+	for (let i = 0; i < totalChunks; i++) {
+		const start = i * CHUNK_SIZE;
+		const chunk = file.slice(start, start + CHUNK_SIZE);
 
-		xhr.onload = () => {
-			if (xhr.status >= 200 && xhr.status < 300) {
-				resolve(JSON.parse(xhr.responseText) as { jobId: string });
-			} else {
-				const err = JSON.parse(xhr.responseText) as { error?: string };
-				reject(new Error(err.error ?? `Upload failed: ${xhr.status}`));
-			}
-		};
+		const res = await fetch(`${API_URL}/api/upload/${uploadId}/chunk`, {
+			method: "POST",
+			body: chunk,
+			headers: {
+				"X-Chunk-Index": String(i),
+				"X-Chunk-Total": String(totalChunks),
+			},
+		});
 
-		xhr.onerror = () => reject(new Error("Network error during upload"));
-		xhr.send(formData);
-	});
+		if (!res.ok) {
+			const err = await res.json().catch(() => ({ error: "Unknown error" }));
+			throw new Error((err as { error?: string }).error ?? `Chunk ${i} failed`);
+		}
+
+		if (onProgress) onProgress(Math.round(((i + 1) / totalChunks) * 100));
+	}
+
+	// Phase 3 — finalize
+	const { jobId } = await apiFetch<{ jobId: string }>(
+		`/api/upload/${uploadId}/finalize`,
+		{ method: "POST" },
+	);
+
+	return { jobId };
 }

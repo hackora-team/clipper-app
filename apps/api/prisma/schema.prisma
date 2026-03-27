@@ -39,6 +39,24 @@ model Job {
   updatedAt    DateTime  @updatedAt
 }
 
+enum UploadStatus {
+  UPLOADING
+  ASSEMBLING
+  DONE
+  FAILED
+}
+
+model Upload {
+  id          String       @id @default(cuid())
+  fileName    String
+  mimeType    String
+  fileSize    BigInt
+  totalChunks Int
+  status      UploadStatus @default(UPLOADING)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
 model Clip {
   id           String     @id @default(cuid())
   jobId        String
