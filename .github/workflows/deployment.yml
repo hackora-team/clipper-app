@@ -122,7 +122,7 @@ jobs:
 
                       # Run Prisma migrations
                       docker compose -f docker-compose.prod.yml run --rm api \
-                        sh -c "node_modules/.bin/prisma migrate deploy --schema apps/api/prisma/schema.prisma"
+                        sh -c "cd apps/api && /app/node_modules/.bin/prisma migrate deploy"
 
                       # Start all services
                       docker compose -f docker-compose.prod.yml up -d --remove-orphans
