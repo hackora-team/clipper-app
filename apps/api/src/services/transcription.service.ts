@@ -8,6 +8,7 @@ export interface WordTimestamp {
 	word: string;
 	start: number;
 	end: number;
+	speaker_id?: string;
 }
 
 export interface AudioEvent {
@@ -28,6 +29,7 @@ const CHUNK_DURATION_SECONDS = 300; // 5-minute chunks
 async function transcribeChunk(
 	audioPath: string,
 	offsetSeconds = 0,
+	diarize = false,
 ): Promise<{
 	text: string;
 	words: WordTimestamp[];
@@ -41,6 +43,7 @@ async function transcribeChunk(
 	form.append("model_id", "scribe_v2");
 	form.append("timestamps_granularity", "word");
 	form.append("tag_audio_events", "true");
+	if (diarize) form.append("diarize", "true");
 
 	const response = await axios.post(
 		"https://api.elevenlabs.io/v1/speech-to-text",
@@ -51,13 +54,19 @@ async function transcribeChunk(
 				...form.getHeaders(),
 			},
 			maxBodyLength: Infinity,
-			timeout: 120_000,
+			timeout: diarize ? 600_000 : 120_000,
 		},
 	);
 
 	const data = response.data as {
 		text: string;
-		words: Array<{ text: string; start: number; end: number; type: string }>;
+		words: Array<{
+			text: string;
+			start: number;
+			end: number;
+			type: string;
+			speaker_id?: string;
+		}>;
 	};
 
 	const words: WordTimestamp[] = [];
@@ -69,6 +78,7 @@ async function transcribeChunk(
 				word: entry.text,
 				start: entry.start + offsetSeconds,
 				end: entry.end + offsetSeconds,
+				...(entry.speaker_id ? { speaker_id: entry.speaker_id } : {}),
 			});
 		} else if (entry.type === "audio_event") {
 			audioEvents.push({
@@ -84,15 +94,16 @@ async function transcribeChunk(
 
 export async function transcribeAudio(
 	audioPath: string,
+	diarize = false,
 ): Promise<TranscriptResult> {
 	const stat = await fs.stat(audioPath);
 
-	if (stat.size <= CHUNK_SIZE_BYTES) {
-		const result = await transcribeChunk(audioPath, 0);
-		return result;
+	// Diarized transcription: always send as single request for consistent speaker IDs
+	if (diarize || stat.size <= CHUNK_SIZE_BYTES) {
+		return transcribeChunk(audioPath, 0, diarize);
 	}
 
-	// Large file — split into chunks
+	// Large file (non-diarized) — split into parallel chunks
 	const tempDir = path.dirname(audioPath);
 	const chunkPaths = await splitAudio(
 		audioPath,
@@ -111,7 +122,6 @@ export async function transcribeAudio(
 			audioEvents: results.flatMap((r) => r.audioEvents),
 		};
 	} finally {
-		// Clean up chunk files
 		await Promise.all(chunkPaths.map((p) => fs.unlink(p).catch(() => {})));
 	}
 }

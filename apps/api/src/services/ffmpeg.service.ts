@@ -143,6 +143,113 @@ export function splitAudio(
 	});
 }
 
+export function extractFrame(
+	videoPath: string,
+	outputPath: string,
+	timestampSeconds: number,
+): Promise<void> {
+	return new Promise((resolve, reject) => {
+		ffmpeg(videoPath)
+			.inputOptions([`-ss ${timestampSeconds}`])
+			.outputOptions(["-vframes 1", "-q:v 2"])
+			.output(outputPath)
+			.on("end", () => resolve())
+			.on("error", (err) =>
+				reject(new Error(`ffmpeg extractFrame: ${err.message}`)),
+			)
+			.run();
+	});
+}
+
+export function getVideoWidth(videoPath: string): Promise<number> {
+	return new Promise((resolve, reject) => {
+		ffmpeg.ffprobe(videoPath, (err, metadata) => {
+			if (err) return reject(new Error(`ffprobe: ${err.message}`));
+			const stream = metadata.streams.find((s) => s.codec_type === "video");
+			resolve(stream?.width ?? 1920);
+		});
+	});
+}
+
+export function cutAndCropVertical(
+	inputPath: string,
+	outputPath: string,
+	startTime: number,
+	endTime: number,
+	cropX: number,
+): Promise<void> {
+	const duration = endTime - startTime;
+	// crop a 9:16 slice from 16:9 source, scale to 1080×1920
+	const cropW = "ih*(9/16)";
+	return new Promise((resolve, reject) => {
+		ffmpeg(inputPath)
+			.inputOptions([`-ss ${Math.max(0, startTime - 0.1)}`])
+			.outputOptions([
+				`-t ${duration + 0.1}`,
+				"-vf",
+				`crop=${cropW}:ih:${cropX}:0,scale=1080:1920`,
+				"-c:v libx264",
+				"-preset fast",
+				"-crf 23",
+				"-c:a aac",
+				"-b:a 128k",
+				"-async 1",
+				"-avoid_negative_ts make_zero",
+			])
+			.output(outputPath)
+			.on("end", () => resolve())
+			.on("error", (err) =>
+				reject(new Error(`ffmpeg cutAndCropVertical: ${err.message}`)),
+			)
+			.run();
+	});
+}
+
+export async function concatVideos(
+	segmentPaths: string[],
+	outputPath: string,
+): Promise<void> {
+	const listPath = `${outputPath}.concat.txt`;
+	const listContent = segmentPaths
+		.map((p) => `file '${p.replace(/'/g, "'\\''")}'`)
+		.join("\n");
+	await fs.writeFile(listPath, listContent, "utf-8");
+
+	await new Promise<void>((resolve, reject) => {
+		const args = [
+			"-f",
+			"concat",
+			"-safe",
+			"0",
+			"-i",
+			listPath,
+			"-c",
+			"copy",
+			"-y",
+			outputPath,
+		];
+		const proc = spawn(process.env.FFMPEG_PATH ?? "ffmpeg", args);
+		let stderr = "";
+		proc.stderr.on("data", (d) => {
+			stderr += d.toString();
+		});
+		proc.on("close", (code) => {
+			if (code === 0) resolve();
+			else
+				reject(
+					new Error(
+						`ffmpeg concatVideos exited ${code}: ${stderr.slice(-300)}`,
+					),
+				);
+		});
+		proc.on("error", (err) =>
+			reject(new Error(`ffmpeg concatVideos: ${err.message}`)),
+		);
+	});
+
+	await fs.unlink(listPath).catch(() => {});
+}
+
 export function getVideoDuration(inputPath: string): Promise<number> {
 	return new Promise((resolve, reject) => {
 		ffmpeg.ffprobe(inputPath, (err, metadata) => {

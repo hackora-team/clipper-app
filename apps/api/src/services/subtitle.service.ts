@@ -53,16 +53,22 @@ function groupWordsIntoPhrases(
 	return phrases;
 }
 
-function buildAssContent(phrases: Phrase[]): string {
+function buildAssContent(phrases: Phrase[], aspectRatio = "16:9"): string {
+	const is916 = aspectRatio === "9:16";
+	const playResX = is916 ? 1080 : 1920;
+	const playResY = is916 ? 1920 : 1080;
+	const fontSize = is916 ? 55 : 72;
+	const marginV = is916 ? 200 : 50;
+
 	const header = `[Script Info]
 ScriptType: v4.00+
-PlayResX: 1920
-PlayResY: 1080
+PlayResX: ${playResX}
+PlayResY: ${playResY}
 WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,FreeSans,72,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,50,1
+Style: Default,FreeSans,${fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -83,6 +89,7 @@ export async function generateSubtitlesAndFinalizeClip(
 	clipId: string,
 	words: WordTimestamp[],
 	clipStartTime: number,
+	aspectRatio = "16:9",
 ): Promise<{ outputPath: string; subtitlePath: string }> {
 	const tempDir = path.join(getStoragePath(), "temp");
 	const subtitlePath = path.join(tempDir, `${clipId}.ass`);
@@ -93,7 +100,7 @@ export async function generateSubtitlesAndFinalizeClip(
 	);
 
 	const phrases = groupWordsIntoPhrases(wordsInRange, clipStartTime);
-	const assContent = buildAssContent(phrases);
+	const assContent = buildAssContent(phrases, aspectRatio);
 	await fs.writeFile(subtitlePath, assContent, "utf-8");
 
 	await fs.mkdir(path.dirname(outputPath), { recursive: true });

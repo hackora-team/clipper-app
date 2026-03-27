@@ -1,0 +1,5 @@
+TEST=hello
+
+VITE_TEST= hello-client
+
+DATABASE_URL="postgresql://postgres:postgres@localhost:5446/postgres"

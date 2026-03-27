@@ -61,6 +61,7 @@ export async function detectClipsProcessor(job: Job): Promise<void> {
 			videoPath: dbJob.filePath,
 			startTime: clip.startTime,
 			endTime: clip.endTime,
+			aspectRatio: dbJob.aspectRatio,
 		});
 	}
 }

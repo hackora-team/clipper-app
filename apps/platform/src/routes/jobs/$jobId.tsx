@@ -60,9 +60,16 @@ function JobDetailPage() {
 						<ArrowLeft className="w-4 h-4" />
 					</Link>
 					<div className="min-w-0">
-						<h1 className="font-bold text-white text-lg truncate">
-							{job.fileName}
-						</h1>
+						<div className="flex items-center gap-2 flex-wrap">
+							<h1 className="font-bold text-white text-lg truncate">
+								{job.fileName}
+							</h1>
+							{job.aspectRatio === "9:16" && (
+								<span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-medium">
+									↕ 9:16 · Vertical
+								</span>
+							)}
+						</div>
 						<p className="text-xs text-gray-500 flex items-center gap-1">
 							<Clock className="w-3 h-3" />
 							{formatDate(job.createdAt)}

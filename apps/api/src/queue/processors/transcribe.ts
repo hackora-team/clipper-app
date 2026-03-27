@@ -18,7 +18,8 @@ export async function transcribeProcessor(job: Job): Promise<void> {
 		message: "Transcribing audio with AI...",
 	});
 
-	const result = await transcribeAudio(audioPath);
+	const dbJob = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
+	const result = await transcribeAudio(audioPath, dbJob.aspectRatio === "9:16");
 
 	await prisma.job.update({
 		where: { id: jobId },

@@ -18,6 +18,7 @@ export interface RenderClipPayload {
 	videoPath: string | null;
 	startTime: number;
 	endTime: number;
+	aspectRatio: string;
 }
 
 export type JobPayload =

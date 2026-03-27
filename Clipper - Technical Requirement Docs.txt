@@ -1,0 +1,973 @@
+﻿Video Clipper MVP — Development Plan
+
+
+Original artefact : https://claude.ai/public/artifacts/43f715ea-c79b-46d6-b5c2-93baf8b02e94
+Project Overview
+A web platform where users upload a long-form video and receive 3–5 AI-generated short clips with subtitles, ready to download. Monetized via subscription plans with a flexible credit system.
+Core flow: Sign up → Choose plan → Buy credits → Upload video → AI finds viral moments → Render clips with subtitles → Download
+________________
+
+
+Tech Stack
+Layer
+	Technology
+	Frontend
+	React 18 + TypeScript + Vite
+	Styling
+	Tailwind CSS
+	Backend API
+	Node.js + Express + TypeScript
+	Database
+	PostgreSQL + Prisma ORM
+	Queue
+	BullMQ + Redis
+	Upload
+	tus-node-server (resumable uploads)
+	Video processing
+	ffmpeg (via fluent-ffmpeg or direct CLI)
+	Transcription
+	ElevenLabs Scribe v2 API (/v1/speech-to-text)
+	Clip detection
+	OpenRouter API (OpenAI-compatible, multi-model)
+	Realtime updates
+	Server-Sent Events (SSE)
+	Auth
+	JWT + bcrypt (email/password)
+	Payments
+	Duitku Payment Gateway (VA, e-wallet, credit card)
+	Deployment
+	Docker Compose + Nginx reverse proxy
+	Storage
+	Local disk (with 24h auto-cleanup cron)
+	________________
+
+
+Project Structure
+1. clipper/
+2. ├── docker-compose.yml
+3. ├── nginx/
+4. │   └── default.conf
+5. ├── backend/
+6. │   ├── package.json
+7. │   ├── tsconfig.json
+8. │   ├── prisma/
+9. │   │   └── schema.prisma
+10. │   ├── Dockerfile
+11. │   └── src/
+12. │       ├── index.ts                  # Express app entry
+13. │       ├── config.ts                 # Env vars, constants
+14. │       ├── routes/
+15. │       │   ├── auth.ts              # POST /api/auth/register, /login, /me
+16. │       │   ├── subscriptions.ts     # GET /api/plans, POST /api/subscribe, POST /api/subscribe/change
+17. │       │   ├── credits.ts           # GET /api/credits/balance, GET /api/credits/transactions
+18. │       │   ├── webhooks.ts          # POST /api/webhooks/duitku
+19. │       │   ├── upload.ts             # Tus upload endpoint
+20. │       │   ├── jobs.ts               # POST /api/jobs (start processing)
+21. │       │   └── clips.ts             # GET /api/jobs/:id, GET /api/clips/:id/download
+22. │       ├── queues/
+23. │       │   ├── setup.ts              # BullMQ queue + worker init
+24. │       │   └── processors/
+25. │       │       ├── extract-audio.ts
+26. │       │       ├── transcribe.ts
+27. │       │       ├── detect-clips.ts
+28. │       │       └── render-clip.ts
+29. │       ├── services/
+30. │       │   ├── ffmpeg.ts             # ffmpeg helper functions
+31. │       │   ├── elevenlabs.ts         # ElevenLabs Scribe v2 STT client
+32. │       │   ├── openrouter.ts         # OpenRouter API client for clip detection
+33. │       │   ├── duitku.ts            # Duitku payment gateway service
+34. │       │   ├── credits.ts           # Credit balance & deduction logic
+35. │       │   └── cleanup.ts           # 24h file cleanup service
+36. │       ├── middleware/
+37. │       │   ├── auth.ts              # JWT authentication middleware
+38. │       │   └── credits.ts           # Credit balance check middleware
+39. │       ├── lib/
+40. │       │   ├── sse.ts                # SSE connection manager
+41. │       │   └── rate-limit.ts        # IP-based rate limiter
+42. │       └── types/
+43. │           └── index.ts              # Shared TypeScript types
+44. ├── frontend/
+45. │   ├── package.json
+46. │   ├── tsconfig.json
+47. │   ├── vite.config.ts
+48. │   ├── Dockerfile
+49. │   ├── index.html
+50. │   └── src/
+51. │       ├── main.tsx
+52. │       ├── App.tsx
+53. │       ├── pages/
+54. │       │   ├── LandingPage.tsx       # Public landing + pricing
+55. │       │   ├── AuthPage.tsx          # Login / Register
+56. │       │   ├── DashboardPage.tsx     # Credit balance + usage history
+57. │       │   ├── PricingPage.tsx       # Plans + subscription options
+58. │       │   ├── HomePage.tsx          # Upload screen (authenticated)
+59. │       │   ├── ProcessingPage.tsx    # Progress screen
+60. │       │   └── ResultsPage.tsx      # Clips display screen
+61. │       ├── components/
+62. │       │   ├── UploadZone.tsx        # Drag-and-drop + file picker
+63. │       │   ├── ProgressTracker.tsx   # Step-by-step progress
+64. │       │   ├── ClipCard.tsx          # Individual clip preview + download
+65. │       │   ├── VideoPlayer.tsx      # Simple HTML5 video player
+66. │       │   ├── PlanCard.tsx         # Subscription plan display
+67. │       │   ├── SubscriptionOptionCard.tsx # Plan + credit option selector
+68. │       │   └── CreditBalance.tsx    # Credit balance indicator
+69. │       ├── hooks/
+70. │       │   ├── useAuth.ts            # Auth state + token management
+71. │       │   ├── useUpload.ts          # Tus upload hook
+72. │       │   └── useJobStatus.ts      # SSE hook for job progress
+73. │       └── lib/
+74. │           └── api.ts                # API client functions
+75. └── scripts/
+76.     └── cleanup.sh                    # Cron script to delete files older than 24h
+
+
+________________
+
+
+Database Schema (Prisma)
+77. generator client {
+78.   provider = "prisma-client-js"
+79. }
+80. 81. datasource db {
+82.   provider = "postgresql"
+83.   url      = env("DATABASE_URL")
+84. }
+85. 86. // ─── Auth & Billing ────────────────────────────────────────
+87. 88. model User {
+89.   id            String   @id @default(cuid())
+90.   email         String   @unique
+91.   passwordHash  String
+92.   name          String?
+93.   
+94.   // Credit balance (denormalized for fast reads)
+95.   creditBalance Int      @default(0)
+96.   
+97.   // Timestamps
+98.   createdAt     DateTime @default(now())
+99.   updatedAt     DateTime @updatedAt
+100.   
+101.   // Relations
+102.   subscription        Subscription?
+103.   creditTransactions  CreditTransaction[]
+104.   jobs                Job[]
+105. }
+106. 107. model Plan {
+108.   id          String   @id @default(cuid())
+109.   name        String   @unique         // "free", "pro", "business"
+110.   displayName String                   // "Free", "Pro", "Business"
+111.   
+112.   // Feature limits
+113.   maxVideoMinutes     Int              // max upload duration per video in minutes
+114.   maxFileSize         Int              // max upload size in MB
+115.   maxClipsPerVideo    Int              // 3 for free, 5 for pro, 10 for business
+116.   priorityQueue       Boolean @default(false) // skip the queue
+117.   customSubtitleStyle Boolean @default(false) // post-MVP feature flag
+118.   
+119.   // Timestamps
+120.   createdAt   DateTime @default(now())
+121.   updatedAt   DateTime @updatedAt
+122.   
+123.   // Relations
+124.   subscriptionOptions SubscriptionOption[]
+125.   subscriptions       Subscription[]
+126. }
+127. 128. model SubscriptionOption {
+129.   id          String   @id @default(cuid())
+130.   planId      String
+131.   plan        Plan     @relation(fields: [planId], references: [id])
+132.   
+133.   creditsPerMonth  Int                 // e.g. 20, 40
+134.   pricePerMonth    Int                 // in IDR, e.g. 20000, 40000
+135.   label            String              // e.g. "20 credits/month", "40 credits/month"
+136.   active           Boolean  @default(true)
+137.   
+138.   createdAt   DateTime @default(now())
+139.   
+140.   // Relations
+141.   subscriptions Subscription[]
+142.   
+143.   @@index([planId])
+144. }
+145. 146. model Subscription {
+147.   id        String   @id @default(cuid())
+148.   userId    String   @unique
+149.   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+150.   planId    String
+151.   plan      Plan     @relation(fields: [planId], references: [id])
+152.   optionId  String
+153.   option    SubscriptionOption @relation(fields: [optionId], references: [id])
+154.   
+155.   // Duitku
+156.   duitkuCustomerEmail   String?
+157.   status                SubscriptionStatus @default(ACTIVE)
+158.   
+159.   // Credits
+160.   creditsPerMonth       Int              // snapshot from option at time of subscription
+161.   creditsRemaining      Int              // credits left this billing cycle
+162.   
+163.   // Billing period
+164.   currentPeriodStart    DateTime?
+165.   currentPeriodEnd      DateTime?
+166.   
+167.   // Timestamps
+168.   createdAt   DateTime @default(now())
+169.   updatedAt   DateTime @updatedAt
+170.   
+171.   @@index([planId])
+172.   @@index([optionId])
+173. }
+174. 175. model CreditTransaction {
+176.   id        String   @id @default(cuid())
+177.   userId    String
+178.   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+179.   
+180.   type      CreditTransactionType  // SUBSCRIPTION_RENEWAL, USAGE, REFUND, SIGNUP_BONUS
+181.   amount    Int                    // positive = credit added, negative = credit spent
+182.   balance   Int                    // balance AFTER this transaction
+183.   
+184.   // Context
+185.   description   String             // e.g. "Monthly renewal: 20 credits (Pro)", "Video processing: my-video.mp4"
+186.   jobId         String?            // linked job (for USAGE type)
+187.   duitkuMerchantOrderId String?    // linked Duitku payment (for SUBSCRIPTION_RENEWAL type)
+188.   duitkuReference       String?    // Duitku reference number
+189.   
+190.   createdAt   DateTime @default(now())
+191.   
+192.   @@index([userId, createdAt])
+193. }
+194. 195. enum SubscriptionStatus {
+196.   ACTIVE
+197.   PAST_DUE
+198.   CANCELED
+199.   TRIALING
+200. }
+201. 202. enum CreditTransactionType {
+203.   SUBSCRIPTION_RENEWAL
+204.   USAGE
+205.   REFUND
+206.   SIGNUP_BONUS
+207. }
+208. 209. // ─── Video Processing ──────────────────────────────────────
+210. 211. model Job {
+212.   id        String   @id @default(cuid())
+213.   userId    String
+214.   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+215.   status    JobStatus @default(UPLOADED)
+216.   
+217.   // Input
+218.   originalFilename  String
+219.   originalPath      String    // Path to uploaded video
+220.   duration          Float?    // Video duration in seconds
+221.   fileSize          Int       // File size in bytes
+222.   
+223.   // Credit cost
+224.   creditsCharged    Int       @default(0) // credits deducted for this job
+225.   
+226.   // Processing artifacts
+227.   audioPath         String?   // Extracted audio path
+228.   transcript        Json?     // Full timestamped transcript from Whisper
+229.   
+230.   // Progress tracking
+231.   currentStep       String?   // Current processing step name
+232.   progress          Int       @default(0) // 0-100
+233.   errorMessage      String?
+234.   
+235.   // Rate limiting
+236.   ipAddress         String
+237.   
+238.   // Timestamps
+239.   createdAt         DateTime  @default(now())
+240.   updatedAt         DateTime  @updatedAt
+241.   completedAt       DateTime?
+242.   
+243.   // Relations
+244.   clips             Clip[]
+245.   
+246.   @@index([userId, createdAt])
+247.   @@index([ipAddress, createdAt])
+248. }
+249. 250. model Clip {
+251.   id        String   @id @default(cuid())
+252.   jobId     String
+253.   job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+254.   
+255.   // Clip metadata from Claude
+256.   title       String
+257.   description String
+258.   startTime   Float     // Start time in seconds
+259.   endTime     Float     // End time in seconds
+260.   viralScore  Int       // 1-10 score from Claude
+261.   
+262.   // Output
+263.   outputPath  String?   // Path to rendered clip with subtitles
+264.   status      ClipStatus @default(PENDING)
+265.   
+266.   // Timestamps
+267.   createdAt   DateTime  @default(now())
+268.   
+269.   @@index([jobId])
+270. }
+271. 272. enum JobStatus {
+273.   UPLOADED
+274.   EXTRACTING_AUDIO
+275.   TRANSCRIBING
+276.   DETECTING_CLIPS
+277.   RENDERING
+278.   COMPLETED
+279.   FAILED
+280. }
+281. 282. enum ClipStatus {
+283.   PENDING
+284.   RENDERING
+285.   COMPLETED
+286.   FAILED
+287. }
+
+
+________________
+
+
+Subscription Plans & Credit System
+Each subscription plan defines feature limits (max video duration, file size, clips per video, priority queue, etc.). When subscribing, the user chooses how many credits they want included — each tier offers multiple credit options at different price points. Credits are the currency used to process videos. Users cannot buy additional credits outside of their subscription — to get more credits, they must wait for their next billing cycle or upgrade their plan.
+Plans Overview
+Feature
+	Free
+	Pro
+	Business
+	Max video duration
+	10 min
+	30 min
+	60 min
+	Max file size
+	100 MB
+	500 MB
+	2 GB
+	Max clips per video
+	3
+	5
+	10
+	Priority queue
+	No
+	Yes
+	Yes
+	Custom subtitle style
+	No
+	No
+	Yes (post-MVP)
+	Free credits on signup
+	5
+	—
+	—
+	Buy extra credits
+	No
+	No
+	No
+	Subscription Options (Credits Bundled)
+When a user subscribes, they pick a plan tier and a credit amount. The subscription price depends on both. Credits reset each billing cycle (monthly).
+Free Plan
+Credits/month
+	Price/month
+	Per Credit
+	5 (signup only, one-time)
+	Rp0
+	—
+	Free plan users get 5 credits once on signup. No monthly renewal. To get more credits, they must subscribe to Pro or Business.
+Pro Plan
+Credits/month
+	Price/month
+	Per Credit
+	20
+	Rp20.000
+	Rp1.000
+	40
+	Rp40.000
+	Rp1.000
+	Business Plan
+Credits/month
+	Price/month
+	Per Credit
+	20
+	Rp40.000
+	Rp2.000
+	40
+	Rp80.000
+	Rp2.000
+	Note: Business plan costs more per credit because it includes premium features: longer videos (up to 60 min), more clips per video (up to 10), priority queue, and eventually custom subtitle styles. The extra cost pays for feature access, not just credits.
+Credit Cost Per Video
+Credit cost scales by video duration:
+Video Duration
+	Credits
+	0–10 min
+	1
+	10–30 min
+	3
+	30–60 min
+	5
+	Credit Flow
+1. User signs up → assigned to Free plan → receives 5 one-time credits
+2. User subscribes to Pro/Business → chooses credit amount (e.g. Pro 20 credits/Rp20.000) → Duitku transaction
+3. On successful payment → subscription activated → credits added to balance
+4. Each billing cycle (monthly) → Duitku recurring transaction → credits replenished to the subscribed amount
+5. User starts a job → credits deducted upfront based on estimated video duration
+6. If job fails → credits refunded automatically via CreditTransaction with type REFUND
+7. Unused credits do not roll over to the next month — they reset on renewal
+8. User wants more credits mid-cycle → must upgrade to a higher credit option within their tier (e.g. Pro 20 → Pro 40) or upgrade tier (Pro → Business)
+Duitku Integration
+Duitku is an Indonesian payment gateway supporting Virtual Account (bank transfer), e-wallets (GoPay, OVO, DANA, ShopeePay, LinkAja), credit cards, and retail outlets (Alfamart, Indomaret). It uses a callback-based flow instead of webhooks.
+* Subscriptions are handled manually: create a Duitku transaction for the monthly amount, on callback success activate the subscription period and grant credits
+* Recurring billing: On each billing cycle, create a new Duitku transaction. If payment fails, mark subscription as PAST_DUE. If not resolved within grace period, downgrade to Free.
+* All payment confirmations come via the POST /api/webhooks/duitku callback endpoint
+* Signature verification: MD5(merchantCode + amount + merchantOrderId + apiKey)
+* Key callback fields to handle:
+   * resultCode — 00 = success, 01 = pending, 02 = failed
+   * merchantOrderId — your order ID to match the transaction
+   * reference — Duitku's transaction reference number
+* Payment methods are fetched via Duitku's getPaymentMethod API to show available options dynamically
+* Use Duitku POP (popup) for seamless checkout UX, or redirect to Duitku's hosted payment page
+________________
+
+
+Implementation Phases
+Phase 1: Project Setup & Infrastructure
+Goal: Docker environment running with all services, basic Express server, database ready.
+Tasks:
+1. Initialize monorepo with backend/ and frontend/ directories
+2. Set up backend/package.json with dependencies:
+   * express, cors, helmet, morgan
+   * @prisma/client, prisma
+   * bullmq, ioredis
+   * @tus/server, @tus/file-store
+   * fluent-ffmpeg
+   * elevenlabs (for Scribe v2 STT API)
+   * openai (OpenAI SDK — used with OpenRouter's OpenAI-compatible API)
+   * dotenv, zod (validation)
+   * uuid
+   * duitku (Duitku Payment Gateway SDK)
+   * jsonwebtoken, bcrypt (auth)
+3. Set up frontend/package.json with dependencies:
+   * react, react-dom, react-router-dom
+   * tus-js-client
+   * tailwindcss, postcss, autoprefixer
+4. Create docker-compose.yml:
+   * backend service (Node.js + ffmpeg + yt-dlp in image)
+   * frontend service (Vite dev server, or nginx for prod)
+   * postgres service
+   * redis service
+   * Shared volume for video file storage at /data/videos
+5. Create Prisma schema and run initial migration
+6. Create basic Express server with health check endpoint
+288. Set up config.ts with all env vars validated via Zod:
+DATABASE_URLREDIS_URLELEVENLABS_API_KEYOPENROUTER_API_KEYOPENROUTER_MODEL=anthropic/claude-sonnet-4.6DUITKU_MERCHANT_CODEDUITKU_API_KEYJWT_SECRETUPLOAD_DIR=/data/videos/uploadsCLIPS_DIR=/data/videos/clipsAUDIO_DIR=/data/videos/audioMAX_FILE_SIZE_MB=500MAX_DURATION_SECONDS=3600MAX_JOBS_PER_IP_PER_DAY=3
+   7. Acceptance criteria: docker-compose up starts all 4 services. GET /api/health returns 200. Prisma can connect to PostgreSQL.
+________________
+
+
+Phase 2: Authentication, Subscriptions & Credits
+Goal: Users can register, log in, and subscribe to a plan with bundled credits via Duitku.
+Tasks:
+   289. Implement JWT-based authentication:
+// backend/src/routes/auth.ts// POST /api/auth/register — create User, hash password with bcrypt, assign Free plan, grant 5 signup credits, return JWT// POST /api/auth/login — verify password, return JWT// GET /api/auth/me — return current user + credit balance + subscription status (requires JWT)
+      1.       290. Create auth middleware:
+// backend/src/middleware/auth.ts// Extract JWT from Authorization header// Verify token, attach user to req// Reject with 401 if invalid/expired
+         2.          291. Seed plans and subscription options:
+// prisma/seed.ts// Create plans: free, pro, business (feature limits only, no price on plan)// Create subscription options://   Pro:      20 credits/Rp20.000, 40 credits/Rp40.000//   Business: 20 credits/Rp40.000, 40 credits/Rp80.000
+            3.             292. Implement Duitku payment flow:
+// backend/src/services/duitku.ts// getPaymentMethods(amount) — fetch available payment channels from Duitku// createTransaction(userId, subscriptionOptionId, paymentMethod) — create Duitku transaction for subscription//   Returns: paymentUrl (redirect) or reference (for POP checkout)// checkTransactionStatus(merchantOrderId) — inquiry API to verify payment
+               4.                293. Implement Duitku callback handler:
+// backend/src/routes/webhooks.ts// POST /api/webhooks/duitku (verify signature: MD5(merchantCode + amount + merchantOrderId + apiKey))// On resultCode "00" (success)://   - Create/renew Subscription with selected option//   - Reset creditsRemaining to the option's creditsPerMonth//   - Create CreditTransaction (type: SUBSCRIPTION_RENEWAL)//   - Update User.creditBalance// On resultCode "02" (failed): mark payment as failed
+                  5.                   294. Implement credit balance service:
+// backend/src/services/credits.ts// getBalance(userId) — return current credit balance// deductCredits(userId, amount, jobId, description) — atomic deduction + transaction log// refundCredits(userId, amount, jobId, description) — on job failure// hasSufficientCredits(userId, amount) — pre-check before job start
+                     6.                      295. Create credit check middleware:
+// backend/src/middleware/credits.ts// Check user has enough credits before allowing job creation// Calculate cost based on estimated video duration
+                        7.                         296. Implement subscription change:
+// POST /api/subscribe/change// Allow user to change credit option within same tier (e.g. Pro 20 → Pro 40)// Or upgrade tier (Pro → Business)// Creates new Duitku transaction for the new amount// On next billing cycle, new option takes effect
+                           8.                            9. Build frontend auth pages:
+                           * AuthPage.tsx — Login/Register forms
+                           * PricingPage.tsx — Plan comparison with credit option selector (dropdown/radio: 20 or 40 credits)
+                           * DashboardPage.tsx — Credit balance, credits remaining this cycle, transaction history, manage subscription
+                           * CreditBalance.tsx — Small balance indicator in nav bar
+                           10. Build LandingPage.tsx:
+                           * Public page with product overview and pricing
+                           * CTA to sign up
+Acceptance criteria: User can register, log in, choose a plan + credit option, and subscribe via Duitku. Credits are granted on successful payment. Credit balance shows correctly. No way to buy additional credits outside subscription. Unauthenticated users are redirected to login.
+________________
+
+
+Phase 3: File Upload System
+Goal: Authenticated users can upload large video files with resumable upload support. Uploads are gated by plan limits and credit balance.
+Tasks:
+                           297. Set up tus server in Express:
+// backend/src/routes/upload.tsimport { Server } from '@tus/server';import { FileStore } from '@tus/file-store';const tusServer = new Server({  path: '/api/uploads',  datastore: new FileStore({ directory: config.UPLOAD_DIR }),  maxSize: config.MAX_FILE_SIZE_MB * 1024 * 1024,  onUploadFinish: async (req, res, upload) => {    // Validate file type (check magic bytes, not just extension)    // Check user's plan limits (max file size, max duration)    // Check user has sufficient credits for estimated duration    // Create Job record in database (linked to userId)    // Return job ID in response header  }});
+                              1.                               2. Add file validation on upload complete:
+                              * Check MIME type via magic bytes (accept: video/mp4, video/quicktime, video/webm)
+                              * Check duration via ffprobe — reject if exceeds plan's maxVideoMinutes
+                              * Check file size against plan's maxFileSize
+                              * Store metadata (filename, size, duration) in Job record
+                              3. Add IP-based rate limiting:
+                              * Query Job table: count jobs from this IP in last 24 hours
+                              * Reject with 429 if >= 3
+                              298. Create frontend upload component:
+// frontend/src/hooks/useUpload.tsimport * as tus from 'tus-js-client';// Create tus upload with:// - chunkSize: 5MB// - retryDelays: [0, 1000, 3000, 5000]// - headers: { Authorization: `Bearer ${token}` }// - onProgress callback for progress bar// - onSuccess callback to navigate to processing page
+                                 4.                                  5. Build HomePage.tsx (authenticated upload screen):
+                                 * Show current credit balance
+                                 * Drag-and-drop zone + file picker button
+                                 * File type/size validation on client side (early feedback, plan-aware)
+                                 * Upload progress bar
+                                 * Credit cost estimate shown before upload
+                                 * "Generate Clips" button (disabled until upload complete or insufficient credits)
+                                 * Navigate to /processing/:jobId on success
+Acceptance criteria: Only authenticated users can upload. Plan limits are enforced (file size, duration). Credit balance is checked before processing starts. Upload survives a brief network interruption. Job record created with correct metadata and userId.
+________________
+
+
+Phase 4: Processing Pipeline — Audio Extraction
+Goal: BullMQ worker extracts audio from uploaded video.
+Tasks:
+                                 299. Set up BullMQ queue and worker:
+// backend/src/queues/setup.tsimport { Queue, Worker } from 'bullmq';import IORedis from 'ioredis';const connection = new IORedis(config.REDIS_URL);export const processingQueue = new Queue('video-processing', { connection });// Worker processes jobs sequentially (concurrency: 1 to control CPU usage)export const worker = new Worker('video-processing', async (job) => {  switch (job.name) {    case 'extract-audio':      return await processExtractAudio(job);    case 'transcribe':      return await processTranscribe(job);    case 'detect-clips':      return await processDetectClips(job);    case 'render-clip':      return await processRenderClip(job);  }}, { connection, concurrency: 1 });
+                                    1.                                     300. Implement audio extraction processor:
+// backend/src/queues/processors/extract-audio.ts// Use ffmpeg to extract audio as WAV (16kHz mono — optimal for Whisper)// Command: ffmpeg -i input.mp4 -ar 16000 -ac 1 -f wav output.wav// Update Job status to EXTRACTING_AUDIO// On complete: update Job.audioPath, add 'transcribe' job to queue
+                                       2.                                        3. Create POST /api/jobs/:id/start endpoint:
+                                       * Requires authentication (JWT middleware)
+                                       * Validates job exists, belongs to user, and is in UPLOADED status
+                                       * Calculates credit cost based on video duration
+                                       * Deducts credits from user balance (atomic transaction)
+                                       * Stores creditsCharged on Job record
+                                       * Adds 'extract-audio' job to BullMQ queue
+                                       * Returns 202 Accepted
+Acceptance criteria: After calling start endpoint, credits are deducted and audio file is extracted. Job status updates to EXTRACTING_AUDIO. Transcribe job is auto-queued on completion. Insufficient credits returns 402.
+________________
+
+
+Phase 5: Processing Pipeline — Transcription
+Goal: Send extracted audio to ElevenLabs Scribe v2 API, get word-level timestamps.
+Tasks:
+                                       301. Implement ElevenLabs Scribe v2 service:
+// backend/src/services/elevenlabs.tsimport { ElevenLabsClient } from 'elevenlabs';import fs from 'fs';const elevenlabs = new ElevenLabsClient({  apiKey: config.ELEVENLABS_API_KEY,});export async function transcribeAudio(audioPath: string): Promise<TranscriptResult> {  // ElevenLabs Scribe v2 accepts files up to 3GB and videos up to 10 hours  // No need for manual chunking — ElevenLabs auto-chunks files > 8 min internally    const audioFile = fs.createReadStream(audioPath);    const result = await elevenlabs.speechToText.convert({    file: audioFile,    model_id: 'scribe_v2',               // Best accuracy model    tag_audio_events: true,               // Detect laughter, applause, etc.    timestamps_granularity: 'word',       // Word-level timestamps for subtitles    diarize: false,                       // Single-speaker assumed for MVP    language_code: null,                  // Auto-detect language  });    // ElevenLabs response format:  // {  //   language_code: "en",  //   language_probability: 0.98,  //   text: "Hello world!",  //   words: [  //     { text: "Hello", start: 0, end: 0.5, type: "word", speaker_id: "speaker_1" },  //     { text: " ", start: 0.5, end: 0.52, type: "spacing" },  //     { text: "world", start: 0.52, end: 0.9, type: "word", speaker_id: "speaker_1" },  //   ]  // }    // Transform to our internal format:  // Filter out "spacing" type entries, keep only "word" type  // Map to: { segments: [{text, start, end}], words: [{word, start, end}] }    const words = result.words    .filter(w => w.type === 'word')    .map(w => ({ word: w.text, start: w.start, end: w.end }));    // Group words into segments (phrases/sentences)  // Break at natural pauses (gaps > 500ms) or punctuation  const segments = groupWordsIntoSegments(words);    return { segments, words, rawText: result.text };}function groupWordsIntoSegments(words: WordTimestamp[]): Segment[] {  // Group consecutive words into segments  // Break when gap between words > 500ms  // Break at sentence-ending punctuation (. ? !)  // Each segment: { text: joined words, start: first word start, end: last word end }}
+                                          1.                                           302. Implement transcribe processor:
+// backend/src/queues/processors/transcribe.ts// Update Job status to TRANSCRIBING// Call elevenlabs transcribe service// Store transcript JSON in Job.transcript// On complete: add 'detect-clips' job to queue
+                                             2.                                              3. Handle ElevenLabs-specific considerations:
+                                             * Max file size is 3GB (well above our 500MB upload limit — no chunking needed)
+                                             * Files > 8 minutes are auto-parallelized internally by ElevenLabs
+                                             * For cloud-hosted files, can use cloud_storage_url param instead of uploading (useful if files are already on R2/S3 — skip for MVP, use direct file upload)
+                                             * Audio events (laughter, applause) are tagged in the transcript — can be passed to Claude for better clip detection context
+                                             * Handle rate limits: ElevenLabs concurrency depends on plan tier
+Acceptance criteria: 30-minute video produces complete transcript with word-level timestamps. Transcript stored in database. Language auto-detected correctly (including Bahasa Indonesia).
+________________
+
+
+Phase 6: Processing Pipeline — Clip Detection
+Goal: Use OpenRouter API to identify the best 3–5 clip-worthy moments from the transcript.
+OpenRouter provides an OpenAI-compatible API that gives access to 300+ models through a single endpoint. This means you can use Claude Sonnet 4.6 as the default and easily swap to a cheaper model later if you want to optimize costs — just change the model string, no code changes needed.
+Recommended models for clip detection (cost vs quality):
+                                             * anthropic/claude-sonnet-4.6 — Default. $3/$15 per 1M tokens. Best instruction following and JSON output.
+                                             * google/gemini-2.5-flash — Budget alternative. $0.30/$2.50 per 1M tokens. 1M context.
+                                             * deepseek/deepseek-chat-v3-0324 — Cheapest paid. ~$0.25/$0.38 per 1M tokens. Good quality.
+                                             * openai/gpt-5.2 — Alternative premium. $1.75/$14 per 1M tokens. Strong reasoning.
+Tasks:
+                                             303. Implement OpenRouter clip detection service:
+// backend/src/services/openrouter.tsimport OpenAI from 'openai';// OpenRouter uses the OpenAI SDK — just change baseURLconst openrouter = new OpenAI({  baseURL: 'https://openrouter.ai/api/v1',  apiKey: config.OPENROUTER_API_KEY,});export async function detectClips(  transcript: TranscriptSegment[],  videoDuration: number): Promise<ClipSuggestion[]> {  // Format transcript as timestamped text:  // [00:00] Hello everyone welcome back...  // [00:15] Today we're going to talk about...    // If transcript is very long (>100K tokens), chunk it:  // Split into ~15-minute windows with 1-minute overlap  // Score each window, take top 5 across all windows  // Claude Sonnet 4.6 has 200K context — most transcripts fit in one call  // For very long videos (2hr+), chunk into ~15-min windows    const response = await openrouter.chat.completions.create({    model: config.OPENROUTER_MODEL, // e.g. 'anthropic/claude-sonnet-4.6'    max_tokens: 2000,    response_format: { type: 'json_object' }, // Force JSON output    messages: [      {        role: 'system',        content: 'You are a viral content expert. Always respond in valid JSON only.'      },      {        role: 'user',        content: clipDetectionPrompt(formattedTranscript, videoDuration)      }    ]  });    // Parse JSON response  const content = response.choices[0].message.content;  const parsed = JSON.parse(content);    // Return: [{ title, description, startTime, endTime, viralScore }]  return parsed.clips;}
+                                                1.                                                 304. Design the clip detection prompt:
+You are a viral content expert. Given this timestamped transcript from a video,identify the 3-5 best moments that would make engaging short-form clips (30-90 seconds each).Look for:- Hot takes or controversial opinions- Emotional moments (funny, surprising, inspiring)- Key insights or "aha" moments- Storytelling peaks (punchlines, reveals, plot twists)- Quotable one-liners or memorable phrases- High-energy or passionate delivery (indicated by punctuation, emphasis words)Rules:- Each clip should be 30-90 seconds long- Clips should start at a natural sentence beginning- Clips should end at a natural pause or conclusion- Add 2 seconds of padding before and after- Do not overlap clipsRespond in JSON format only:{  "clips": [    {      "title": "Short catchy title for the clip",      "description": "One-line description of why this is clip-worthy",      "startTime": 124.5,      "endTime": 178.3,      "viralScore": 8    }  ]}TRANSCRIPT:{transcript}
+                                                   2.                                                    305. Implement detect-clips processor:
+// backend/src/queues/processors/detect-clips.ts// Update Job status to DETECTING_CLIPS// Call openrouter service with transcript// Create Clip records in database from suggestions// On complete: add 'render-clip' jobs to queue (one per clip)
+                                                      3.                                                       306. Add model fallback (optional but recommended):
+// OpenRouter supports automatic fallback if a model is down// You can also implement manual fallback:const FALLBACK_MODELS = [  'anthropic/claude-sonnet-4.6',  'google/gemini-2.5-flash',  'deepseek/deepseek-chat-v3-0324',];// Try each model in order until one succeedsfor (const model of FALLBACK_MODELS) {  try {    return await detectClipsWithModel(model, transcript, videoDuration);  } catch (err) {    console.warn(`Model ${model} failed, trying next...`);  }}
+                                                         4. Acceptance criteria: OpenRouter returns 3–5 clip suggestions with valid timestamps. Clip records created in database. Render jobs queued for each clip. Model can be swapped via env var without code changes.
+________________
+
+
+Phase 7: Processing Pipeline — Clip Rendering
+Goal: Cut video segments and burn in simple subtitles using ffmpeg.
+Tasks:
+                                                         307. Implement ffmpeg clip cutting:
+// backend/src/services/ffmpeg.tsexport async function cutClip(  inputPath: string,  outputPath: string,  startTime: number,  endTime: number): Promise<void> {  // Use accurate seeking:  // ffmpeg -ss {start} -i input.mp4 -to {duration} -c:v libx264 -c:a aac -y output.mp4  // Note: -ss before -i for fast seek, but we re-encode for accuracy}
+                                                            1.                                                             308. Implement simple subtitle burning:
+export async function burnSubtitles(  inputPath: string,  outputPath: string,  words: WordTimestamp[]  // From Whisper word-level timestamps): Promise<void> {  // Strategy: Group words into phrases (max 6-8 words per line)  // Generate SRT/ASS file from word timestamps  // Use ffmpeg drawtext or subtitles filter:  // ffmpeg -i input.mp4 -vf "subtitles=subs.ass:force_style='FontName=Arial,FontSize=22,  //   PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,  //   Alignment=2,MarginV=40'" -c:a copy output.mp4}
+                                                               2.                                                                309. Implement subtitle grouping logic:
+// Group words into display phrasesfunction groupWordsIntoPhrases(  words: WordTimestamp[],  clipStartTime: number,  clipEndTime: number): Phrase[] {  // Filter words within clip time range  // Group into phrases: max 6-8 words per phrase  // Break at natural pauses (gaps > 300ms between words)  // Break at punctuation (periods, commas, question marks)  // Each phrase: { text, startTime, endTime }}
+                                                                  3.                                                                   310. Generate ASS subtitle file:
+function generateASSFile(phrases: Phrase[]): string {  // ASS format header with styling:  // - White text, black outline (2px)  // - Arial Bold, size 22  // - Bottom-center positioned (MarginV=40)  // - No background box    // One Dialogue line per phrase:  // Dialogue: 0,{start},{end},Default,,0,0,0,,{text}}
+                                                                     4.                                                                      311. Implement render-clip processor:
+// backend/src/queues/processors/render-clip.ts// Update Clip status to RENDERING// Step 1: Cut clip segment from original video// Step 2: Extract relevant word timestamps for this clip's time range// Step 3: Generate ASS subtitle file// Step 4: Burn subtitles into clip// Step 5: Update Clip.outputPath and status to COMPLETED// When all clips for a job are done: update Job status to COMPLETED
+                                                                        5.                                                                         6. Handle edge cases:
+                                                                        * Keyframe accuracy: always re-encode near cut points
+                                                                        * Audio sync: ensure audio doesn't drift after cutting
+                                                                        * Empty subtitle segments: skip if no words in time range
+Acceptance criteria: Each clip is cut accurately at specified timestamps. Subtitles display as white text with black outline, one phrase at a time. Output is a valid MP4 file with H.264 video and AAC audio.
+________________
+
+
+Phase 8: Real-time Progress & Results UI
+Goal: Frontend shows live progress during processing and displays results when complete.
+Tasks:
+                                                                        312. Implement Server-Sent Events (SSE) for progress updates:
+// backend/src/lib/sse.ts// Map of jobId -> Set of Response objects// When job progress updates, broadcast to all connected clients// backend/src/routes/jobs.ts// GET /api/jobs/:id/events — SSE endpoint// Send events: { step, progress, status, clips? }
+                                                                           1.                                                                            313. Update each processor to emit progress events:
+// In each processor, after status change:sseManager.broadcast(jobId, {  step: 'transcribing',  progress: 45,  status: 'TRANSCRIBING',  message: 'Transcribing audio...'});
+                                                                              2.                                                                               314. Build ProcessingPage.tsx:
+┌─────────────────────────────────────────┐│                                         ││   🎬 Generating your clips...           ││                                         ││   ✅ Audio extracted                     ││   ⏳ Transcribing... (45%)              ││   ○  Analyzing for viral moments         ││   ○  Rendering clips                     ││                                         ││   ━━━━━━━━━━━━━━━━░░░░░░░ 45%           ││                                         │└─────────────────────────────────────────┘
+                                                                                 3.                                                                                  * Connect to SSE endpoint on mount
+                                                                                 * Show step-by-step progress with checkmarks
+                                                                                 * Overall progress bar
+                                                                                 * Auto-redirect to results page when COMPLETED
+                                                                                 * Show error state if FAILED
+                                                                                 315. Build ResultsPage.tsx:
+┌─────────────────────────────────────────┐│                                         ││   🎬 Your Clips Are Ready!              ││                                         ││   ┌─────────────────────────────────┐   ││   │  ▶ [Video Preview]              │   ││   │  "The Moment Everything Changed" │   ││   │  Why this is great: Hot take     │   ││   │  ⭐ Viral Score: 9/10            │   ││   │  [⬇ Download MP4]               │   ││   └─────────────────────────────────┘   ││                                         ││   ┌─────────────────────────────────┐   ││   │  ▶ [Video Preview]              │   ││   │  "Why Nobody Talks About This"  │   ││   │  ...                             │   ││   └─────────────────────────────────┘   ││                                         ││   [Upload Another Video]                ││                                         │└─────────────────────────────────────────┘
+                                                                                    4.                                                                                     * Fetch job data via GET /api/jobs/:id
+                                                                                    * Display clips sorted by viralScore descending
+                                                                                    * HTML5 video player for preview (native <video> tag is fine)
+                                                                                    * Download button per clip (direct link to file)
+                                                                                    * "Upload Another Video" button → back to home
+                                                                                    316. Create API endpoints:
+// GET /api/jobs/:id — Job details + clips// GET /api/clips/:id/download — Serve clip file with Content-Disposition header
+                                                                                       5. Acceptance criteria: Progress updates appear in real-time (< 1 second latency). Results page shows all clips with working preview players. Download button serves correct MP4 file.
+________________
+
+
+Phase 9: Error Handling, Cleanup & Polish
+Goal: Production-ready error handling, file cleanup, and UX polish.
+Tasks:
+                                                                                       1. Add comprehensive error handling to each processor:
+                                                                                       * Retry logic: BullMQ attempts: 3 with exponential backoff
+                                                                                       * On permanent failure: update Job status to FAILED with error message
+                                                                                       * Refund credits on permanent failure via refundCredits(userId, creditsCharged, jobId)
+                                                                                       * Clean up partial artifacts on failure (temp audio files, partial clips)
+                                                                                       317. Implement 24-hour file cleanup:
+# scripts/cleanup.sh — run via cron every hour# Delete uploaded videos older than 24 hoursfind /data/videos/uploads -type f -mmin +1440 -delete# Delete clips older than 24 hoursfind /data/videos/clips -type f -mmin +1440 -delete# Delete audio files older than 24 hoursfind /data/videos/audio -type f -mmin +1440 -delete# Update database: mark expired jobs
+                                                                                          2.                                                                                           318. Add IP rate limiting middleware:
+// backend/src/lib/rate-limit.ts// Check: SELECT COUNT(*) FROM "Job" WHERE "ipAddress" = $1 AND "createdAt" > NOW() - INTERVAL '24 hours'// If >= 3, return 429 with message "Rate limit reached. Try again tomorrow."
+                                                                                             3.                                                                                              4. Frontend error states:
+                                                                                             * Upload failure → Retry button
+                                                                                             * Processing failure → Error message + "Try Again" button + credit refund notice
+                                                                                             * Insufficient credits → Message explaining credits reset on next billing cycle, or upgrade subscription option for more credits
+                                                                                             * Rate limit hit → Message with countdown to next availability
+                                                                                             * Invalid file type → Inline validation message
+                                                                                             * File too large → Inline validation message (plan-aware: show plan limit)
+                                                                                             * Auth expired → Redirect to login
+                                                                                             * Subscription expired → Redirect to pricing page
+                                                                                             5. Add loading states and skeleton screens
+                                                                                             6. Add favicon, meta tags, basic SEO
+                                                                                             7. Mobile responsiveness (the upload and results pages should work on phone)
+Acceptance criteria: Failed jobs display meaningful error messages and credits are refunded. Files auto-delete after 24 hours. Rate limiting works. All error states have UI feedback. Credit refunds appear in transaction history.
+________________
+
+
+Phase 10: Docker & Deployment
+Goal: Production-ready Docker Compose setup deployable to VPS.
+Tasks:
+                                                                                             319. Create backend/Dockerfile:
+FROM node:20-slim# Install ffmpegRUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*WORKDIR /appCOPY package*.json ./RUN npm ci --productionCOPY . .RUN npx prisma generateRUN npm run buildCMD ["node", "dist/index.js"]
+                                                                                                1.                                                                                                 320. Create frontend/Dockerfile:
+FROM node:20-slim AS buildWORKDIR /appCOPY package*.json ./RUN npm ciCOPY . .RUN npm run buildFROM nginx:alpineCOPY --from=build /app/dist /usr/share/nginx/htmlCOPY nginx.conf /etc/nginx/conf.d/default.conf
+                                                                                                   2.                                                                                                    321. Create docker-compose.yml:
+services:  backend:    build: ./backend    environment:      - DATABASE_URL=postgresql://clipper:clipper@postgres:5432/clipper      - REDIS_URL=redis://redis:6379      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-anthropic/claude-sonnet-4.6}      - DUITKU_MERCHANT_CODE=${DUITKU_MERCHANT_CODE}      - DUITKU_API_KEY=${DUITKU_API_KEY}      - JWT_SECRET=${JWT_SECRET}    volumes:      - video-data:/data/videos    depends_on:      - postgres      - redis    frontend:    build: ./frontend    ports:      - "80:80"    depends_on:      - backend    postgres:    image: postgres:16-alpine    environment:      - POSTGRES_USER=clipper      - POSTGRES_PASSWORD=clipper      - POSTGRES_DB=clipper    volumes:      - pg-data:/var/lib/postgresql/data    redis:    image: redis:7-alpine    volumes:      - redis-data:/datavolumes:  video-data:  pg-data:  redis-data:
+                                                                                                      3.                                                                                                       4. Create nginx/default.conf:
+                                                                                                      * Proxy /api/* → backend:3000
+                                                                                                      * Proxy /api/uploads/* → backend:3000 (with increased client_max_body_size)
+                                                                                                      * Serve frontend static files
+                                                                                                      * Set client_max_body_size 600m for uploads
+                                                                                                      * Enable gzip compression
+                                                                                                      322. Add cron job to host for cleanup:
+# Add to crontab0 * * * * docker exec clipper-backend /bin/bash /app/scripts/cleanup.sh
+                                                                                                         5.                                                                                                          323. Prisma migration on startup:
+# In backend entrypoint or docker-compose command:npx prisma migrate deploy && node dist/index.js
+                                                                                                            6. Acceptance criteria: docker-compose up --build starts the full stack. Nginx routes correctly. Uploads work through Nginx. Database persists across restarts.
+________________
+
+
+API Endpoints Summary
+Method
+	Path
+	Auth
+	Description
+	POST
+	/api/auth/register
+	No
+	Create account
+	POST
+	/api/auth/login
+	No
+	Login, returns JWT
+	GET
+	/api/auth/me
+	Yes
+	Get current user profile + balance
+	GET
+	/api/plans
+	No
+	List all plans + subscription options
+	POST
+	/api/subscribe
+	Yes
+	Subscribe to a plan+credit option via Duitku
+	POST
+	/api/subscribe/change
+	Yes
+	Change subscription option (e.g. 20→40 credits)
+	GET
+	/api/credits/balance
+	Yes
+	Get credit balance + credits remaining this cycle
+	GET
+	/api/credits/transactions
+	Yes
+	Get credit transaction history
+	GET
+	/api/payments/methods
+	Yes
+	Get available Duitku payment methods
+	POST
+	/api/webhooks/duitku
+	No*
+	Duitku callback (signature verified)
+	POST
+	/api/uploads
+	Yes
+	Tus upload endpoint
+	PATCH
+	/api/uploads/:id
+	Yes
+	Tus upload resume
+	HEAD
+	/api/uploads/:id
+	Yes
+	Tus upload status
+	POST
+	/api/jobs/:id/start
+	Yes
+	Start processing pipeline
+	GET
+	/api/jobs/:id
+	Yes
+	Get job details + clips
+	GET
+	/api/jobs/:id/events
+	Yes
+	SSE stream for progress updates
+	GET
+	/api/clips/:id/download
+	Yes
+	Download rendered clip
+	* Duitku callback endpoint uses MD5 signature verification instead of JWT.
+________________
+
+
+Environment Variables
+                                                                                                            324. # Database
+                                                                                                            325. DATABASE_URL=postgresql://clipper:clipper@postgres:5432/clipper
+                                                                                                            326.                                                                                                             327. # Redis
+                                                                                                            328. REDIS_URL=redis://redis:6379
+                                                                                                            329.                                                                                                             330. # API Keys
+                                                                                                            331. ELEVENLABS_API_KEY=xi-...
+                                                                                                            332. OPENROUTER_API_KEY=sk-or-...
+                                                                                                            333.                                                                                                             334. # OpenRouter Model (can be changed without code changes)
+                                                                                                            335. # Default: anthropic/claude-sonnet-4.6 ($3/$15 per 1M tokens) — best quality
+                                                                                                            336. # Budget:  google/gemini-2.5-flash ($0.30/$2.50 per 1M tokens)
+                                                                                                            337. # Cheapest: deepseek/deepseek-chat-v3-0324 ($0.25/$0.38 per 1M tokens)
+                                                                                                            338. OPENROUTER_MODEL=anthropic/claude-sonnet-4.6
+                                                                                                            339.                                                                                                             340. # Duitku Payment Gateway
+                                                                                                            341. DUITKU_MERCHANT_CODE=DXXXX
+                                                                                                            342. DUITKU_API_KEY=XXXc6XXX31829bXXX74cd5XXXXX869XX
+                                                                                                            343. DUITKU_SANDBOX=true                    # true for sandbox, false for production
+                                                                                                            344. DUITKU_CALLBACK_URL=https://yourdomain.com/api/webhooks/duitku
+                                                                                                            345. DUITKU_RETURN_URL=https://yourdomain.com/payment/return
+                                                                                                            346. DUITKU_EXPIRY_PERIOD=1440              # Payment expiry in minutes (24 hours)
+                                                                                                            347.                                                                                                             348. # Auth
+                                                                                                            349. JWT_SECRET=your-secret-key-here
+                                                                                                            350. JWT_EXPIRES_IN=7d
+                                                                                                            351.                                                                                                             352. # Storage Paths
+                                                                                                            353. UPLOAD_DIR=/data/videos/uploads
+                                                                                                            354. CLIPS_DIR=/data/videos/clips
+                                                                                                            355. AUDIO_DIR=/data/videos/audio
+                                                                                                            356.                                                                                                             357. # Limits
+                                                                                                            358. MAX_FILE_SIZE_MB=500
+                                                                                                            359. MAX_DURATION_SECONDS=3600
+                                                                                                            360. MAX_JOBS_PER_IP_PER_DAY=3
+                                                                                                            361.                                                                                                             362. # Server
+                                                                                                            363. PORT=3000
+                                                                                                            364. NODE_ENV=production
+
+
+________________
+
+
+Clip Detection Prompt (Full Version — used via OpenRouter)
+                                                                                                            365. You are a viral content expert who identifies the most compelling, shareable moments from long-form video content.
+                                                                                                            366.                                                                                                             367. Given the timestamped transcript below, identify the TOP 3-5 moments that would make the most engaging short-form clips (for TikTok, Instagram Reels, YouTube Shorts).
+                                                                                                            368.                                                                                                             369. ## What makes a viral clip:
+                                                                                                            370. - **Hot takes**: Bold, controversial, or unexpected opinions
+                                                                                                            371. - **Emotional peaks**: Funny, shocking, inspiring, or heartfelt moments
+                                                                                                            372. - **Aha moments**: Key insights, revelations, or mind-blowing facts
+                                                                                                            373. - **Story payoffs**: Punchlines, plot twists, dramatic reveals
+                                                                                                            374. - **Quotable lines**: Memorable one-liners, catchphrases
+                                                                                                            375. - **High energy**: Passionate rants, excited reactions, heated debates
+                                                                                                            376. - **Relatability**: "That's so me" moments that viewers share
+                                                                                                            377.                                                                                                             378. ## Rules:
+                                                                                                            379. 1. Each clip must be 30-90 seconds long
+                                                                                                            380. 2. Start each clip 2-3 seconds before the interesting moment begins (setup is important)
+                                                                                                            381. 3. End each clip at a natural pause, laugh, or conclusion — not mid-sentence
+                                                                                                            382. 4. Clips must not overlap with each other
+                                                                                                            383. 5. Include a mix of clip types (don't pick 5 hot takes — vary the selection)
+                                                                                                            384. 6. Rank clips by viralScore (1-10) based on shareability potential
+                                                                                                            385.                                                                                                             386. ## Response format (JSON only, no markdown):
+                                                                                                            387. {
+                                                                                                            388.   "clips": [
+                                                                                                            389.     {
+                                                                                                            390.       "title": "Short, catchy, clickbait-y title (max 60 chars)",
+                                                                                                            391.       "description": "One sentence explaining why this moment is clip-worthy",
+                                                                                                            392.       "startTime": 124.5,
+                                                                                                            393.       "endTime": 178.3,
+                                                                                                            394.       "viralScore": 8
+                                                                                                            395.     }
+                                                                                                            396.   ]
+                                                                                                            397. }
+                                                                                                            398.                                                                                                             399. ## TRANSCRIPT:
+                                                                                                            400. {transcript}
+
+
+________________
+
+
+Subtitle Style Specification (ASS Format) — MVP Default
+Post-MVP: Custom subtitle styles (font, color, size, position, background box) and video aspect ratio conversion (9:16 vertical reformat for TikTok/Reels/Shorts) will be added after the MVP is stable and working well. For MVP, all clips use the default style below and keep the original video aspect ratio.
+                                                                                                            401. [Script Info]
+                                                                                                            402. ScriptType: v4.00+
+                                                                                                            403. PlayResX: 1920
+                                                                                                            404. PlayResY: 1080
+                                                                                                            405.                                                                                                             406. [V4+ Styles]
+                                                                                                            407. Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+                                                                                                            408. Style: Default,Arial,60,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,0,2,20,20,50,1
+                                                                                                            409.                                                                                                             410. [Events]
+                                                                                                            411. Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+
+
+Style breakdown:
+                                                                                                            * Font: Arial Bold, size 60 (scales well for vertical and horizontal)
+                                                                                                            * Primary color: White (&H00FFFFFF)
+                                                                                                            * Outline color: Black (&H00000000), 3px thick
+                                                                                                            * Shadow: None (cleaner look)
+                                                                                                            * Position: Bottom center (Alignment=2), MarginV=50 from bottom
+                                                                                                            * No background box (BorderStyle=1 = outline only)
+________________
+
+
+Estimated Processing Time Per Video
+Step
+	10 min video
+	30 min video
+	60 min video
+	Audio extraction
+	~5s
+	~10s
+	~20s
+	Transcription
+	~30s
+	~90s
+	~180s
+	Clip detection
+	~5s
+	~8s
+	~12s
+	Render (per clip)
+	~15s
+	~15s
+	~15s
+	Total (5 clips)
+	~2 min
+	~3 min
+	~5 min
+	________________
+
+
+Cost Per Video
+ElevenLabs Scribe v2 pricing varies by plan tier. Using Pro plan (~$0.40/hr) as reference. OpenRouter clip detection cost depends on model choice. A 60-min transcript is ~15K tokens input, ~500 tokens output.
+Step
+	10 min
+	30 min
+	60 min
+	ElevenLabs Scribe v2 (Pro)
+	$0.07
+	$0.20
+	$0.40
+	Claude Sonnet 4.6 (via OR)
+	~$0.01
+	~$0.02
+	~$0.05
+	Total
+	~$0.08
+	~$0.22
+	~$0.45
+	With Claude Sonnet 4.6 at $3/$15 per 1M tokens via OpenRouter, the LLM cost is ~$0.02–0.05 per video. If you want to cut costs later, swap to Gemini 2.5 Flash ($0.30/$2.50) and the LLM cost drops to under $0.01 per video. The transcription cost dominates either way.
+Note: ElevenLabs STT pricing by plan tier (per hour):
+                                                                                                            * Creator plan: ~$0.50/hr
+                                                                                                            * Pro plan: ~$0.40/hr
+                                                                                                            * Scale plan: ~$0.34/hr
+                                                                                                            * Business plan: ~$0.22/hr (best rate)
+Note: OpenRouter model pricing (per 1M tokens, input/output):
+                                                                                                            * Claude Sonnet 4.6: $3 / $15 (default — best clip detection quality)
+                                                                                                            * Gemini 2.5 Flash: $0.30 / $2.50 (budget alternative)
+                                                                                                            * DeepSeek V3: ~$0.25 / $0.38 (cheapest)
+                                                                                                            * GPT-5.2: $1.75 / $14 (premium alternative)
+________________
+
+
+Notes for Claude Code Implementation
+                                                                                                            * Build phase by phase. Complete each phase fully before moving to the next.
+                                                                                                            * Test each processor independently before wiring them together. You can create test scripts that run a single processor with mock data.
+                                                                                                            * Start with a short test video (2-3 minutes) for development. Don't test with 60-minute videos until the pipeline is stable.
+                                                                                                            * The ffmpeg subtitle burning is the trickiest part. If ASS format causes issues, fall back to SRT with the simpler subtitles filter.
+                                                                                                            * BullMQ job chaining: Each processor should add the next job to the queue upon completion, creating a chain: extract-audio → transcribe → detect-clips → render-clip (×N).
+                                                                                                            * SSE reconnection: The frontend should auto-reconnect SSE if the connection drops (EventSource does this by default).
+                                                                                                            * ElevenLabs response mapping: The Scribe v2 API returns words with type: "word" and type: "spacing" — filter out spacing entries and only keep word entries for subtitle generation.
+                                                                                                            * ElevenLabs audio events: Scribe v2 can tag laughter, applause, music etc. Pass these tags to the clip detection prompt as extra context — laughter/applause moments are strong virality signals.
+                                                                                                            * OpenRouter model swapping: Default is anthropic/claude-sonnet-4.6 for best clip detection quality. If you want to reduce costs, change OPENROUTER_MODEL env var to google/gemini-2.5-flash — no code changes needed. OpenRouter uses the OpenAI SDK format so the integration is identical for all models.
+                                                                                                            * OpenRouter free models: For development/testing, OpenRouter offers free models (rate-limited to 200 req/day). Use openrouter/free as the model ID to avoid burning credits during development.
+                                                                                                            * Duitku sandbox: Use https://sandbox.duitku.com/webapi for development. Switch to https://passport.duitku.com/webapi for production. The duitku npm package supports sandbox mode via config.
+                                                                                                            * Duitku callback: Unlike Stripe webhooks, Duitku sends callbacks via HTTP POST to your callbackUrl. Always verify the signature (MD5(merchantCode + amount + merchantOrderId + apiKey)) before processing. Whitelist Duitku's IP addresses for production.
+                                                                                                            * Duitku POP checkout: For a seamless UX, use Duitku POP (popup-based checkout) by including the Duitku JS script. This avoids full-page redirects and keeps users on your site.
+________________
+
+
+Post-MVP Roadmap
+Features to add after the MVP is stable and working well:
+Migration from ffmpeg to Remotion
+Post-MVP, the clip rendering pipeline should migrate from raw ffmpeg to Remotion (https://remotion.dev) for significantly better flexibility. Remotion renders videos programmatically using React components, which makes it far easier to build rich, customizable video outputs compared to ffmpeg filter chains.
+Why Remotion over ffmpeg for post-MVP:
+                                                                                                            * Subtitle styles become React components — trivial to customize fonts, colors, animations
+                                                                                                            * Aspect ratio conversion is just a different React layout, not a complex ffmpeg filter graph
+                                                                                                            * Word-by-word karaoke highlighting is straightforward with React animations
+                                                                                                            * Video previews can render in the browser before committing to a full render
+                                                                                                            * Templates and themes become shareable React components
+                                                                                                            * Much easier for frontend developers to contribute to video rendering logic
+Migration plan:
+                                                                                                            * Keep ffmpeg for MVP (simple, proven, no extra dependencies)
+                                                                                                            * Add @remotion/renderer and @remotion/cli to backend
+                                                                                                            * Rebuild clip rendering as Remotion compositions (React components)
+                                                                                                            * Use Remotion's renderMedia() for server-side rendering
+                                                                                                            * ffmpeg still handles audio extraction and initial video processing
+Video Aspect Ratio Conversion (via Remotion)
+                                                                                                            * 9:16 vertical reformat for TikTok, Instagram Reels, YouTube Shorts
+                                                                                                            * Smart crop using speaker detection or center-crop — handled as a Remotion composition layout
+                                                                                                            * User toggle: "Keep original" vs "Convert to vertical (9:16)"
+                                                                                                            * Preview the crop in-browser before rendering
+Custom Subtitle Styles (via Remotion)
+                                                                                                            * Available on Business plan (customSubtitleStyle feature flag)
+                                                                                                            * User-configurable options:
+                                                                                                            * Font family (Arial, Montserrat, Poppins, etc.)
+                                                                                                            * Font size and weight
+                                                                                                            * Text color + outline color
+                                                                                                            * Background box (on/off, color, opacity)
+                                                                                                            * Position (top, center, bottom)
+                                                                                                            * Word-by-word highlight animation (karaoke style)
+                                                                                                            * Store as SubtitlePreset model linked to User
+                                                                                                            * Subtitle styles are React components — easy to add new styles as "templates"
+Additional Future Features
+                                                                                                            * Social media direct publishing (TikTok, Instagram, YouTube APIs)
+                                                                                                            * Batch processing (upload multiple videos at once)
+                                                                                                            * Team/organization accounts with shared credit pools
+                                                                                                            * Custom clip duration range (user overrides 30–90s default)
+                                                                                                            * Multi-language subtitle translation (via AI translation API)
+                                                                                                            * Webhook/API access for power users to integrate into their workflows
+                                                                                                            * Video template marketplace — users can share/sell Remotion-based clip templates
+                                                                                                            412.

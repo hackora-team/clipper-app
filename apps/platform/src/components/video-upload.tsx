@@ -15,10 +15,13 @@ const ACCEPTED_TYPES = {
 };
 const MAX_SIZE = 500 * 1024 * 1024;
 
+type AspectRatio = "16:9" | "9:16";
+
 export function VideoUpload() {
 	const navigate = useNavigate();
 	const { addRecentJob } = useRecentJobs();
 
+	const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
 	const [uploading, setUploading] = useState(false);
 	const [progress, setProgress] = useState(0);
 	const [error, setError] = useState<string | null>(null);
@@ -30,7 +33,7 @@ export function VideoUpload() {
 			setError(null);
 
 			try {
-				const { jobId } = await uploadVideo(file, setProgress);
+				const { jobId } = await uploadVideo(file, aspectRatio, setProgress);
 				addRecentJob({
 					id: jobId,
 					fileName: file.name,
@@ -42,7 +45,7 @@ export function VideoUpload() {
 				setUploading(false);
 			}
 		},
-		[navigate, addRecentJob],
+		[navigate, addRecentJob, aspectRatio],
 	);
 
 	const onDrop = useCallback(
@@ -74,6 +77,74 @@ export function VideoUpload() {
 
 	return (
 		<div>
+			{/* Format selector */}
+			{!uploading && (
+				<div className="mb-4">
+					<p className="text-sm text-gray-400 mb-3">Output Format</p>
+					<div className="grid grid-cols-2 gap-3">
+						{/* 16:9 card */}
+						<button
+							type="button"
+							onClick={() => setAspectRatio("16:9")}
+							className={`p-4 rounded-xl border-2 text-left transition-all ${
+								aspectRatio === "16:9"
+									? "border-purple-500 bg-purple-500/10"
+									: "border-gray-700 hover:border-gray-600 bg-gray-900/30"
+							}`}
+						>
+							<div
+								className={`w-full aspect-video rounded-md mb-3 flex items-center justify-center text-xs font-mono ${
+									aspectRatio === "16:9"
+										? "bg-purple-500/20 text-purple-300"
+										: "bg-gray-800 text-gray-500"
+								}`}
+							>
+								16 : 9
+							</div>
+							<p
+								className={`text-sm font-medium ${aspectRatio === "16:9" ? "text-white" : "text-gray-400"}`}
+							>
+								Landscape
+							</p>
+							<p className="text-xs text-gray-600 mt-0.5">YouTube · Podcast</p>
+						</button>
+
+						{/* 9:16 card */}
+						<button
+							type="button"
+							onClick={() => setAspectRatio("9:16")}
+							className={`p-4 rounded-xl border-2 text-left transition-all ${
+								aspectRatio === "9:16"
+									? "border-purple-500 bg-purple-500/10"
+									: "border-gray-700 hover:border-gray-600 bg-gray-900/30"
+							}`}
+						>
+							<div className="flex justify-center mb-3">
+								<div
+									className={`w-10 rounded-md flex items-center justify-center text-xs font-mono ${
+										aspectRatio === "9:16"
+											? "bg-purple-500/20 text-purple-300"
+											: "bg-gray-800 text-gray-500"
+									}`}
+									style={{ aspectRatio: "9/16", minHeight: "3.5rem" }}
+								>
+									<span className="rotate-90 whitespace-nowrap">9 : 16</span>
+								</div>
+							</div>
+							<p
+								className={`text-sm font-medium ${aspectRatio === "9:16" ? "text-white" : "text-gray-400"}`}
+							>
+								Vertical
+							</p>
+							<p className="text-xs text-gray-600 mt-0.5">
+								TikTok · Reels · Follows speaker
+							</p>
+						</button>
+					</div>
+				</div>
+			)}
+
+			{/* Upload warning */}
 			{uploading && (
 				<div className="mb-4 flex items-start gap-3 p-4 bg-amber-950/40 border border-amber-800/60 rounded-xl">
 					<AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -88,6 +159,8 @@ export function VideoUpload() {
 					</div>
 				</div>
 			)}
+
+			{/* Dropzone */}
 			<div
 				{...getRootProps()}
 				className={`

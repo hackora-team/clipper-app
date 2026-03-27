@@ -116,6 +116,10 @@ uploadRoute.post("/:uploadId/chunk", async (c) => {
 // Phase 3 — Finalize: assemble chunks and enqueue job
 uploadRoute.post("/:uploadId/finalize", async (c) => {
 	const uploadId = c.req.param("uploadId");
+	const body = await c.req
+		.json<{ aspectRatio?: string }>()
+		.catch(() => ({ aspectRatio: undefined }));
+	const aspectRatio = body.aspectRatio === "9:16" ? "9:16" : "16:9";
 
 	// Atomically transition UPLOADING → ASSEMBLING
 	const updated = await prisma.upload.updateMany({
@@ -184,7 +188,7 @@ uploadRoute.post("/:uploadId/finalize", async (c) => {
 
 	// Create job and move file into place
 	const job = await prisma.job.create({
-		data: { fileName: upload.fileName, status: "PENDING" },
+		data: { fileName: upload.fileName, status: "PENDING", aspectRatio },
 	});
 
 	const filePath = path.join(getStoragePath(), "uploads", `${job.id}${ext}`);

@@ -28,6 +28,7 @@ const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB — must match server
 
 export async function uploadVideo(
 	file: File,
+	aspectRatio: "16:9" | "9:16",
 	onProgress?: (pct: number) => void,
 ): Promise<{ jobId: string }> {
 	// Phase 1 — init
@@ -70,7 +71,10 @@ export async function uploadVideo(
 	// Phase 3 — finalize
 	const { jobId } = await apiFetch<{ jobId: string }>(
 		`/api/upload/${uploadId}/finalize`,
-		{ method: "POST" },
+		{
+			method: "POST",
+			body: JSON.stringify({ aspectRatio }),
+		},
 	);
 
 	return { jobId };

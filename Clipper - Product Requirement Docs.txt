@@ -1,0 +1,347 @@
+﻿Video Clipper MVP — Requirement List & Team Division
+Original artefact : https://claude.ai/public/artifacts/153e754a-f5c6-406f-8d92-66e8afae4225
+Team Division: Feature Ownership (Fullstack)
+Each person owns their feature end-to-end — database, backend, frontend, and testing. This avoids handoff friction and gives each person clear accountability.
+Person
+	Feature
+	Summary
+	A
+	Infrastructure + Video Processing Pipeline
+	Docker, project setup, ffmpeg audio extraction, clip cutting, subtitle burning, BullMQ queue system
+	B
+	AI Services + Clip Detection
+	ElevenLabs transcription, OpenRouter clip detection, transcript processing, clip detection prompt
+	C
+	Auth + Payments + Credits
+	Registration, login, JWT, Duitku integration, subscription plans, credit purchase, credit balance & deduction
+	D
+	Upload + Progress + Results UI
+	File upload (tus), real-time progress (SSE), processing page, results page, clip download, error states
+	________________
+
+
+Why This Division
+Each person owns a vertical slice of the product — from database to UI. The features are ordered as a pipeline, so the boundaries are natural:
+[C: Auth + Pay] → [D: Upload] → [A: Extract Audio] → [B: Transcribe + Detect] → [A: Render Clips] → [D: Progress + Results]
+
+
+* A owns the "engine" — the infrastructure that everything runs on, plus the video processing (first and last steps of the pipeline).
+* B owns the "brain" — the AI integrations that analyze the video and find viral moments.
+* C owns the "gate" — everything before a user can use the product (auth, payment, credits).
+* D owns the "experience" — everything the user sees during and after processing (upload, progress, results).
+Shared setup on Day 1: A sets up the repo, Docker, and Express skeleton. C creates the Prisma schema (since they own the User/Plan/Credit models). Everyone pulls and starts building on their feature from Day 2.
+________________
+
+
+User Stories by Feature Owner
+Person A — Infrastructure + Video Processing Pipeline
+A1: Project skeleton is ready for the team to build on
+* Initialize monorepo (backend/, frontend/)
+* Set up docker-compose.yml (backend, frontend, postgres, redis)
+* Create Express server with health check (GET /api/health)
+* Set up config.ts with Zod-validated env vars
+* Set up BullMQ queue + worker with job routing (extract-audio, transcribe, detect-clips, render-clip)
+* Ensure docker-compose up works and all services connect
+A2: Audio is extracted from the uploaded video automatically
+* Implement extract-audio processor (ffmpeg → 16kHz mono WAV)
+* Update Job status to EXTRACTING_AUDIO
+* On complete: save audioPath to Job, auto-queue transcribe job
+* Handle ffmpeg errors gracefully
+A3: Clips are cut from the original video at the detected timestamps
+* Implement ffmpeg clip cutting service (accurate seeking, re-encode)
+* Handle edge cases: keyframe accuracy, audio sync
+A4: Subtitles are burned into each clip
+* Group word-level timestamps into display phrases (max 6–8 words, break at pauses/punctuation)
+* Generate ASS subtitle file (white text, black outline, bottom center)
+* Burn subtitles into clip via ffmpeg subtitles filter
+* Output: valid MP4 (H.264 + AAC)
+A5: Each clip is rendered end-to-end and the job completes
+* Implement render-clip processor (cut → subtitles → burn → save)
+* Update Clip status (PENDING → RENDERING → COMPLETED)
+* When all clips for a job are done: update Job status to COMPLETED
+* Handle partial failures (some clips fail, others succeed)
+A6: Failed jobs retry automatically and clean up after themselves
+* BullMQ retry: attempts: 3 with exponential backoff
+* On permanent failure: set Job status to FAILED with error message
+* Clean up partial artifacts (temp audio files, incomplete clips)
+A7: Old files are automatically deleted after 24 hours
+* Create cleanup.sh cron script (find + delete files > 24h)
+* Add cron job to Docker host
+* Mark expired jobs in database
+A8: The app is deployable via Docker Compose to a VPS
+* Create backend/Dockerfile (Node.js + ffmpeg)
+* Create frontend/Dockerfile (Vite build → nginx)
+* Create nginx/default.conf (proxy rules, client_max_body_size 600m, gzip)
+* Prisma migration on startup
+* End-to-end smoke test on VPS
+________________
+
+
+Person B — AI Services + Clip Detection
+B1: Audio is transcribed with word-level timestamps
+* Implement ElevenLabs Scribe v2 service (speechToText.convert())
+* Configure: model_id: 'scribe_v2', tag_audio_events: true, timestamps_granularity: 'word'
+* Filter response: keep only type: "word" entries, discard "spacing"
+* Group words into segments (break at pauses > 500ms, sentence-ending punctuation)
+* Return structured format: { segments, words, rawText }
+B2: The transcription step works as a queue processor
+* Implement transcribe processor
+* Update Job status to TRANSCRIBING, emit SSE progress
+* Store transcript JSON in Job.transcript
+* Pass audio event tags (laughter, applause) as extra context
+* On complete: auto-queue detect-clips job
+* Handle ElevenLabs rate limits and API errors with retry
+B3: The 3–5 best viral moments are identified from the transcript
+* Implement OpenRouter API client (OpenAI SDK with custom baseURL)
+* Format transcript as timestamped text: [MM:SS] text...
+* Build clip detection prompt (viral content expert, JSON output)
+* Parse response: validate JSON, extract clips array
+* Each clip: { title, description, startTime, endTime, viralScore }
+* Enforce rules: 30–90s duration, no overlaps, 2–3s setup padding
+B4: Clip detection works as a queue processor and creates clip records
+* Implement detect-clips processor
+* Update Job status to DETECTING_CLIPS, emit SSE progress
+* Create Clip records in database from AI suggestions
+* Respect plan's maxClipsPerVideo limit (trim results)
+* On complete: auto-queue render-clip jobs (one per clip)
+B5: The AI model can be swapped without code changes
+* Model configurable via OPENROUTER_MODEL env var
+* Default: anthropic/claude-sonnet-4.6
+* Budget: google/gemini-2.5-flash
+* Cheapest: deepseek/deepseek-chat-v3-0324
+* Optional: model fallback chain (try next model if primary fails)
+B6: Very long transcripts are handled gracefully
+* If transcript > 100K tokens: chunk into ~15-minute windows with 1-minute overlap
+* Score each window independently, merge and deduplicate results
+* Take top clips across all windows by viralScore
+________________
+
+
+Person C — Auth + Payments + Credits
+C1: Users can register and log in
+* Prisma schema: User model (email, passwordHash, creditBalance)
+* POST /api/auth/register — validate input, hash password (bcrypt), create User, assign Free plan, grant 5 one-time signup credits, return JWT
+* POST /api/auth/login — verify password, return JWT
+* GET /api/auth/me — return user profile + credit balance + subscription status
+* JWT auth middleware (used by all protected routes)
+* Frontend: AuthPage.tsx (login/register forms), useAuth.ts hook (token storage, auth state)
+C2: Users can see available plans and subscription options
+* Prisma schema: Plan, SubscriptionOption models
+* Seed script: create Free / Pro / Business plans with subscription options (Pro: 20 credits/Rp20.000, 40 credits/Rp40.000 | Business: 20 credits/Rp40.000, 40 credits/Rp80.000)
+* GET /api/plans — list all plans + their subscription options (public endpoint)
+* Frontend: LandingPage.tsx (product overview + pricing CTA), PricingPage.tsx (plan comparison with credit option selector)
+C3: Users can subscribe to a plan with bundled credits via Duitku
+* Prisma schema: Subscription model (linked to Plan + SubscriptionOption)
+* POST /api/subscribe — user picks a plan + credit option → create Duitku transaction for subscription amount
+* GET /api/payments/methods — fetch available Duitku payment channels
+* Duitku POP or redirect checkout flow
+* POST /api/webhooks/duitku — callback handler with MD5 signature verification
+* On success callback: create Subscription, set billing period, grant credits (reset creditsRemaining), create CreditTransaction (type: SUBSCRIPTION_RENEWAL)
+* Frontend: payment method selection, credit option selector (e.g. "20 credits" / "40 credits"), Duitku POP JS integration
+C4: Users can change their subscription option
+* POST /api/subscribe/change — change credit option within same tier (e.g. Pro 20 → Pro 40) or upgrade tier (Pro → Business)
+* Creates new Duitku transaction for the new amount
+* On next billing cycle, new option takes effect
+* Frontend: option change UI in dashboard
+C5: Credits are deducted when a job starts and refunded on failure
+* Credit service: getBalance(), deductCredits(), refundCredits(), hasSufficientCredits()
+* Credit check middleware: applied to job start route, rejects with 402 if insufficient
+* Credit cost calculation based on video duration (0–10min = 1 credit, 10–30min = 3, 30–60min = 5)
+* On job start: atomic deduction + CreditTransaction (type: USAGE)
+* On job failure: automatic refund + CreditTransaction (type: REFUND)
+* Unused credits do NOT roll over — reset on billing cycle renewal
+* Frontend: CreditBalance.tsx (nav bar indicator), credit cost estimate on upload page
+C6: Users can view their credit balance and transaction history
+* GET /api/credits/balance — current balance + credits remaining this cycle
+* GET /api/credits/transactions — paginated transaction list
+* Frontend: DashboardPage.tsx (balance, credits remaining, next renewal date, transaction history, subscription status, change option)
+C7: Access is properly gated by auth and plan limits
+* All protected routes require valid JWT
+* Upload limits enforced per plan: maxVideoMinutes, maxFileSize, maxClipsPerVideo
+* IP-based rate limiting: 3 jobs per IP per 24 hours
+* No way to buy additional credits outside subscription
+* Frontend: redirect to login if unauthenticated, show plan limits on upload page, show "out of credits" state with upgrade prompt
+________________
+
+
+Person D — Upload + Progress + Results UI
+D1: Users can upload large video files with resumable upload
+* Set up tus server in Express (@tus/server + @tus/file-store)
+* Auth: require JWT on upload endpoint
+* On upload complete: validate file type (magic bytes — mp4, quicktime, webm), check duration via ffprobe, check against plan limits
+* Create Job record in database (linked to userId, with file metadata)
+* Frontend: HomePage.tsx with drag-and-drop zone + file picker, useUpload.ts hook (tus-js-client with JWT header, progress, retry)
+* Client-side validation: file type, file size (plan-aware), show estimated credit cost
+* "Generate Clips" button → calls POST /api/jobs/:id/start → navigates to processing page
+D2: Users see real-time progress during video processing
+* Backend: SSE connection manager (map of jobId → Set of Response objects)
+* GET /api/jobs/:id/events — SSE endpoint (auth required)
+* Coordinate with A and B: each processor emits SSE events via the manager ({ step, progress, status, message })
+* Frontend: useJobStatus.ts hook (EventSource with auto-reconnect)
+* ProcessingPage.tsx — step-by-step checklist (✅ Audio extracted → ⏳ Transcribing 45% → ○ Analyzing → ○ Rendering), overall progress bar
+* Auto-redirect to results page when status = COMPLETED
+* Error state: show error message + credit refund notice when status = FAILED
+D3: Users can preview and download their clips
+* GET /api/jobs/:id — return job details + all clips (auth required, verify ownership)
+* GET /api/clips/:id/download — serve clip file with Content-Disposition header (auth required)
+* Frontend: ResultsPage.tsx — clip cards sorted by viralScore (descending)
+* Each card: HTML5 <video> preview player, title, description, viral score badge, download button
+* "Upload Another Video" button → navigate back to home
+D4: All error states have clear UI feedback
+* Upload failure → retry button
+* Processing failure → error message + "Try Again" button + credit refund notice
+* Insufficient credits → message explaining credits reset on next billing cycle, prompt to upgrade subscription option
+* Rate limit hit → message with countdown
+* Invalid file type / file too large → inline validation (plan-aware messaging)
+* Auth expired → redirect to login
+* Subscription expired → redirect to pricing page
+* Loading states and skeleton screens for all pages
+D5: The app looks good and works on mobile
+* Mobile-responsive layout for all pages (upload, processing, results, pricing, dashboard)
+* Favicon, meta tags, basic SEO (title, description, OG tags)
+* Consistent design system: typography, colors, spacing
+________________
+
+
+Shared Setup Tasks (Day 1 — everyone together)
+Before splitting into features, the team should do these together:
+1. A creates the repo, Docker Compose, Express skeleton, and pushes to main
+2. C creates the full Prisma schema (all models) and runs the initial migration — since C owns the most models (User, Plan, CreditPack, Subscription, CreditTransaction) and the schema affects everyone
+3. Everyone reviews and agrees on the Prisma schema
+4. Everyone agrees on the API contract (endpoint paths, request/response shapes) — write a shared types/index.ts
+5. A defines the BullMQ job payload shapes and SSE event format — B and D need these
+6. Everyone can docker-compose up and start coding
+________________
+
+
+Dependency Map
+           ┌──────────────────────────────────────────────────────────────────┐
+            │                     SHARED SETUP (Day 1)                        │
+            │  A: Repo + Docker    C: Prisma schema    ALL: API contract      │
+            └──────────┬──────────────────┬──────────────────┬─────────────────┘
+                       │                  │                  │
+          ┌────────────▼───┐    ┌────────▼────────┐   ┌────▼──────────────┐
+          │   A: Infra +   │    │  C: Auth +      │   │  D: Upload +     │
+          │   Queue Setup  │    │  Payments +     │   │  Progress +      │
+          │   (A1)         │    │  Credits        │   │  Results UI      │
+          │                │    │  (C1-C7)        │   │  (D1-D5)         │
+          └───────┬────────┘    └────────┬────────┘   └────┬─────────────┘
+                  │                      │                  │
+                  │              C provides:                │
+                  │              • JWT middleware ──────────►│ D uses for
+                  │              • Credit deduction ────────►│ protected routes
+                  │                      │                  │
+          ┌───────▼────────┐             │          ┌──────▼──────────────┐
+          │  A: Audio      │             │          │  D: tus upload +   │
+          │  Extraction    │◄────────────┘          │  Job creation      │
+          │  (A2)          │  C's credit deduction  │  (D1)              │
+          └───────┬────────┘  runs on job start     └──────┬─────────────┘
+                  │                                        │
+          ┌───────▼────────┐                               │
+          │  B: Transcribe │                               │
+          │  (B1-B2)       │                               │
+          └───────┬────────┘                               │
+                  │                                        │
+          ┌───────▼────────┐                               │
+          │  B: Detect     │                               │
+          │  Clips         │                               │
+          │  (B3-B6)       │                               │
+          └───────┬────────┘                               │
+                  │                                        │
+          ┌───────▼────────┐                        ┌──────▼──────────────┐
+          │  A: Render     │                        │  D: SSE progress +  │
+          │  Clips         │───────────────────────►│  Results page       │
+          │  (A3-A5)       │  A emits SSE events    │  (D2-D3)           │
+          └────────────────┘  D consumes them       └─────────────────────┘
+
+
+________________
+
+
+Recommended Timeline
+Week 1–2: Foundation
+Person
+	Focus
+	Delivers
+	A
+	Repo, Docker, Express, BullMQ setup, audio extraction processor, start on clip rendering
+	A1, A2, start A3–A4
+	B
+	ElevenLabs service, transcribe processor, OpenRouter client, clip detection prompt
+	B1, B2, B3
+	C
+	Prisma schema, seed, auth (register/login/JWT), plans endpoint, Duitku service, credit service
+	C1, C2, C3, C5
+	D
+	tus upload setup, file validation, Job creation, upload page (frontend), start SSE manager
+	D1, start D2
+	Week 3–4: Pipeline + Integration
+Person
+	Focus
+	Delivers
+	A
+	Finish clip rendering (cut + subtitles + burn), retry logic, connect full queue chain
+	A3, A4, A5, A6
+	B
+	Detect-clips processor, long transcript handling, model fallback, integrate into queue
+	B4, B5, B6
+	C
+	Subscription change flow, Duitku POP integration, dashboard, plan limit enforcement
+	C4, C6, C7
+	D
+	SSE progress (backend + frontend), processing page, results page, clip download
+	D2, D3
+	Week 5–6: Polish + Deploy
+Person
+	Focus
+	Delivers
+	A
+	Cleanup cron, Dockerfiles, nginx, deployment, end-to-end testing
+	A7, A8
+	B
+	Edge case testing (various video types, languages), prompt tuning, performance optimization
+	Testing + tuning
+	C
+	Landing page polish, pricing page, auth edge cases, Duitku production setup
+	C2 polish, C3 production
+	D
+	Error states, loading skeletons, mobile responsive, SEO, end-to-end UX testing
+	D4, D5
+	Final week: Everyone tests the full flow together on VPS.
+________________
+
+
+Integration Points — Who Talks to Whom
+Touchpoint
+	People
+	What to agree on
+	Queue job payloads
+	A ↔ B
+	A defines the BullMQ job data shapes, B implements the AI processors that consume them
+	SSE events
+	A ↔ D
+	A emits progress events from processors, D consumes them in frontend
+	JWT middleware
+	C → A, B, D
+	C builds it, everyone uses it on their protected routes
+	Credit deduction
+	C ↔ D
+	D's job start triggers C's credit deduction logic
+	Job/Clip DB models
+	C ↔ A, B, D
+	C creates the schema, everyone reads/writes Job and Clip records
+	Duitku POP frontend
+	C ↔ D
+	C provides the payment logic, D may need to integrate credit balance display in upload page
+	Plan limits
+	C → D
+	C defines plan limits, D enforces them on upload validation
+	________________
+
+
+Communication Recommendations
+1. Day 1 kickoff — Set up repo together, agree on Prisma schema, API contract, and BullMQ job shapes. Everyone should leave Day 1 able to run docker-compose up and start coding.
+2. Daily async standups — Quick message: what I did, what I'm doing, am I blocked. Slack/Discord.
+3. Feature branches + PR reviews — Each person works on their own branch. At least one other person reviews before merge.
+4. Mock everything at boundaries — D can mock the queue processors to test SSE. C can mock API responses to test frontend. B can test processors with a hardcoded transcript file.
+5. Weekly sync — 30 min. Demo what's working, discuss integration points, plan the next week.
