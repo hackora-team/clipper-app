@@ -19,10 +19,13 @@ RUN pnpm --filter platform build
 # Production image
 FROM node:20-alpine
 
+RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
+
 WORKDIR /app
 
 COPY --from=builder /app/apps/platform/dist ./dist
 COPY --from=builder /app/apps/platform/package.json ./
+COPY --from=builder /app/apps/platform/node_modules ./node_modules
 
 EXPOSE 3000
 
