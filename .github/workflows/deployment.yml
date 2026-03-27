@@ -94,7 +94,7 @@ jobs:
                   push: true
                   tags: ${{ env.PLATFORM_IMAGE }}:latest,${{ env.PLATFORM_IMAGE }}:${{ github.sha }}
                   build-args: |
-                      VITE_API_URL=https://clipper.moni.id
+                      VITE_API_URL=https://clipper.tesielts.id
 
             - name: Deploy to VPS
               uses: appleboy/ssh-action@v1

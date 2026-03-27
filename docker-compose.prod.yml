@@ -9,7 +9,7 @@ services:
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       STORAGE_PATH: /app/storage
-      CORS_ORIGIN: https://clipper.moni.id
+      CORS_ORIGIN: https://clipper.tesielts.id
     volumes:
       - storage_data:/app/storage
     depends_on:
