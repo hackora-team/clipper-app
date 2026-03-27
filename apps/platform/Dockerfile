@@ -6,10 +6,12 @@ WORKDIR /app
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/platform/package.json ./apps/platform/
+COPY packages/ui/package.json ./packages/ui/
 
-RUN pnpm install --filter platform --frozen-lockfile
+RUN pnpm install --filter platform... --frozen-lockfile
 
 COPY apps/platform ./apps/platform
+COPY packages/ui ./packages/ui
 
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
@@ -25,8 +27,9 @@ WORKDIR /app
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/platform/package.json ./apps/platform/
+COPY packages/ui/package.json ./packages/ui/
 
-RUN pnpm install --filter platform --frozen-lockfile
+RUN pnpm install --filter platform... --frozen-lockfile
 
 COPY --from=builder /app/apps/platform/dist ./apps/platform/dist
 COPY apps/platform/vite.config.ts ./apps/platform/
