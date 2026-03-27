@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { getStoragePath } from "./ffmpeg.service";
+import { burnSubtitles, getStoragePath } from "./ffmpeg.service";
 import type { WordTimestamp } from "./transcription.service";
 
 interface Phrase {
@@ -97,7 +97,14 @@ export async function generateSubtitlesAndFinalizeClip(
 	await fs.writeFile(subtitlePath, assContent, "utf-8");
 
 	await fs.mkdir(path.dirname(outputPath), { recursive: true });
-	await fs.copyFile(rawClipPath, outputPath);
+
+	if (phrases.length > 0) {
+		await burnSubtitles(rawClipPath, subtitlePath, outputPath);
+	} else {
+		await fs.copyFile(rawClipPath, outputPath);
+	}
+
+	await fs.unlink(subtitlePath).catch(() => {});
 
 	return { outputPath, subtitlePath };
 }

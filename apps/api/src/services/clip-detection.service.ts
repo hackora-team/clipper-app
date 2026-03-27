@@ -1,5 +1,5 @@
-import { openai } from "../lib/openai";
-import type { WordTimestamp } from "./transcription.service";
+import { openrouter } from "../lib/openrouter";
+import type { AudioEvent, WordTimestamp } from "./transcription.service";
 
 export interface DetectedClip {
 	title: string;
@@ -24,42 +24,64 @@ Criteria for high viral scores:
 - Controversial or debate-worthy statements
 - Actionable tips or advice
 - Strong opening hooks
+- Audio events like [laughter] or [applause] are strong indicators of emotional peaks — weight them heavily in your viral scoring
 
 Rules:
 - Return 3-8 clips, sorted by viralScore descending
 - Each clip must be 15-90 seconds long
 - Clips must not overlap
-- Only return a JSON object with key "clips" containing an array
+- Only return a valid JSON object with key "clips" containing an array — no markdown, no explanation
 
 Example response:
 {"clips": [{"title": "...", "description": "...", "startTime": 10.5, "endTime": 45.2, "viralScore": 87}]}`;
 
+function extractJson(content: string): string {
+	const fenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+	if (fenceMatch) return fenceMatch[1].trim();
+	const objectMatch = content.match(/\{[\s\S]*\}/);
+	if (objectMatch) return objectMatch[0];
+	return content.trim();
+}
+
 export async function detectViralClips(
 	words: WordTimestamp[],
+	audioEvents: AudioEvent[],
 ): Promise<DetectedClip[]> {
-	const transcriptText = words
-		.map((w) => `[${w.start.toFixed(1)}s] ${w.word}`)
-		.join(" ");
+	const wordEntries = words.map((w) => ({
+		time: w.start,
+		text: w.word,
+	}));
 
-	const response = await openai.chat.completions.create({
-		model: "gpt-4o",
-		response_format: { type: "json_object" },
+	const eventEntries = audioEvents.map((e) => ({
+		time: e.start,
+		text: `[${e.type}]`,
+	}));
+
+	const timeline = [...wordEntries, ...eventEntries]
+		.sort((a, b) => a.time - b.time)
+		.map((entry) => `[${entry.time.toFixed(1)}s] ${entry.text}`)
+		.join("\n");
+
+	const response = await openrouter.chat.completions.create({
+		model: "google/gemini-2.5-flash",
 		messages: [
 			{ role: "system", content: SYSTEM_PROMPT },
 			{
 				role: "user",
-				content: `Analyze this transcript and identify the most engaging moments:\n\n${transcriptText}`,
+				content: `Analyze this transcript and identify the most engaging moments:\n\n${timeline}`,
 			},
 		],
 		temperature: 0.3,
 	});
 
 	const content = response.choices[0]?.message?.content;
-	if (!content) throw new Error("No response from GPT-4o");
+	if (!content) throw new Error("No response from Gemini");
 
-	const parsed = JSON.parse(content) as { clips: DetectedClip[] };
+	const parsed = JSON.parse(extractJson(content)) as {
+		clips: DetectedClip[];
+	};
 	if (!Array.isArray(parsed.clips))
-		throw new Error("Invalid response format from GPT-4o");
+		throw new Error("Invalid response format from Gemini");
 
 	return parsed.clips.filter(
 		(clip) =>

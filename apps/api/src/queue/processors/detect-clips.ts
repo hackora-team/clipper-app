@@ -2,7 +2,10 @@ import type { Job } from "bullmq";
 import { emitJobEvent } from "../../lib/events";
 import { JOB_NAMES, videoQueue } from "../../lib/queue";
 import { detectViralClips } from "../../services/clip-detection.service";
-import type { WordTimestamp } from "../../services/transcription.service";
+import type {
+	AudioEvent,
+	WordTimestamp,
+} from "../../services/transcription.service";
 import type { DetectClipsPayload } from "../../types/queue";
 import { prisma } from "../../utils/prisma";
 
@@ -20,12 +23,16 @@ export async function detectClipsProcessor(job: Job): Promise<void> {
 	});
 
 	const dbJob = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
-	const transcript = dbJob.transcript as {
+	const transcript = dbJob.transcript as unknown as {
 		text: string;
 		words: WordTimestamp[];
+		audioEvents: AudioEvent[];
 	};
 
-	const detectedClips = await detectViralClips(transcript.words);
+	const detectedClips = await detectViralClips(
+		transcript.words,
+		transcript.audioEvents ?? [],
+	);
 
 	await prisma.job.update({
 		where: { id: jobId },

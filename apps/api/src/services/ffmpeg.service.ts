@@ -3,6 +3,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import ffmpeg from "fluent-ffmpeg";
 
+if (process.env.FFMPEG_PATH) ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH);
+if (process.env.FFPROBE_PATH) ffmpeg.setFfprobePath(process.env.FFPROBE_PATH);
+
 export function extractAudio(
 	inputPath: string,
 	outputPath: string,
@@ -76,7 +79,7 @@ export function burnSubtitles(
 			"-y",
 			outputPath,
 		];
-		const proc = spawn("ffmpeg", args);
+		const proc = spawn(process.env.FFMPEG_PATH ?? "ffmpeg", args);
 		let stderr = "";
 		proc.stderr.on("data", (data) => {
 			stderr += data.toString();
@@ -93,6 +96,48 @@ export function burnSubtitles(
 		proc.on("error", (err) =>
 			reject(new Error(`ffmpeg burnSubtitles: ${err.message}`)),
 		);
+	});
+}
+
+export function splitAudio(
+	inputPath: string,
+	outputDir: string,
+	chunkDuration: number,
+): Promise<string[]> {
+	return new Promise((resolve, reject) => {
+		ffmpeg.ffprobe(inputPath, (err, metadata) => {
+			if (err) return reject(new Error(`ffprobe: ${err.message}`));
+			const totalDuration = metadata.format.duration ?? 0;
+			const chunks: string[] = [];
+			let start = 0;
+			let index = 0;
+			while (start < totalDuration) {
+				const chunkPath = path.join(outputDir, `chunk_${index}.mp3`);
+				chunks.push({ path: chunkPath, start, index });
+				start += chunkDuration;
+				index++;
+			}
+			let completed = 0;
+			const chunkPaths: string[] = chunks.map((c) => c.path);
+			for (const chunk of chunks as {
+				path: string;
+				start: number;
+				index: number;
+			}[]) {
+				ffmpeg(inputPath)
+					.inputOptions([`-ss ${chunk.start}`])
+					.outputOptions([`-t ${chunkDuration}`, "-acodec copy"])
+					.output(chunk.path)
+					.on("end", () => {
+						completed++;
+						if (completed === chunks.length) resolve(chunkPaths);
+					})
+					.on("error", (e) =>
+						reject(new Error(`ffmpeg splitAudio: ${e.message}`)),
+					)
+					.run();
+			}
+		});
 	});
 }
 
