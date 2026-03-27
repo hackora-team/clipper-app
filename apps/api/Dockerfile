@@ -9,7 +9,7 @@ RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
 WORKDIR /app
 
 # Copy workspace manifests for dependency install
-COPY package.json pnpm-workspace.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY apps/api/prisma ./apps/api/prisma
 
