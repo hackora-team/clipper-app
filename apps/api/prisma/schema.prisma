@@ -7,3 +7,52 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum JobStatus {
+  PENDING
+  EXTRACTING_AUDIO
+  TRANSCRIBING
+  DETECTING_CLIPS
+  RENDERING
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
+enum ClipStatus {
+  PENDING
+  RENDERING
+  COMPLETED
+  FAILED
+}
+
+model Job {
+  id           String    @id @default(cuid())
+  status       JobStatus @default(PENDING)
+  fileName     String
+  filePath     String?
+  audioPath    String?
+  transcript   Json?
+  errorMessage String?
+  clips        Clip[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Clip {
+  id           String     @id @default(cuid())
+  jobId        String
+  job          Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  startTime    Float
+  endTime      Float
+  duration     Float
+  viralScore   Float      @default(0)
+  outputPath   String?
+  subtitlePath String?
+  status       ClipStatus @default(PENDING)
+  errorMessage String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
