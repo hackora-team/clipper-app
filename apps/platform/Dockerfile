@@ -23,9 +23,14 @@ RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
 
 WORKDIR /app
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/apps/platform/dist ./dist
-COPY --from=builder /app/apps/platform/package.json ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/platform/package.json ./apps/platform/
+
+RUN pnpm install --filter platform --frozen-lockfile --prod
+
+COPY --from=builder /app/apps/platform/dist ./apps/platform/dist
+
+WORKDIR /app/apps/platform
 
 EXPOSE 3000
 
