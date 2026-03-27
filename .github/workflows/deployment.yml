@@ -35,6 +35,9 @@ jobs:
             - name: Lint
               run: pnpm lint
 
+            - name: Generate Prisma Client
+              run: pnpm --filter api exec prisma generate
+
             - name: Type Check
               run: pnpm --filter api exec tsc --noEmit
 
@@ -61,6 +64,9 @@ jobs:
 
             - name: Lint
               run: pnpm lint
+
+            - name: Generate Prisma Client
+              run: pnpm --filter api exec prisma generate
 
             - name: Type Check
               run: pnpm --filter api exec tsc --noEmit
