@@ -313,7 +313,7 @@ function LandingPage() {
 						style={{ display: "flex", gap: 32, listStyle: "none" }}
 					>
 						{["Cara Kerja", "Fitur", "Harga", "FAQ"].map((label, i) => (
-							<li key={i}>
+							<li key={label}>
 								<a
 									href={`#${["cara-kerja", "fitur", "harga", "faq"][i]}`}
 									className="nav-link"
@@ -479,8 +479,8 @@ function LandingPage() {
 							{ num: "3–5", label: "Clip viral per video" },
 							{ num: "Rp1rb", label: "Per kredit (Plan Pro)" },
 							{ num: "Auto", label: "Subtitle terbakar di clip" },
-						].map((s, i) => (
-							<div key={i} style={{ textAlign: "center" }}>
+						].map((s) => (
+							<div key={s.label} style={{ textAlign: "center" }}>
 								<div
 									className="syne grad-text-2"
 									style={{ fontSize: "2rem", fontWeight: 800 }}
@@ -524,9 +524,9 @@ function LandingPage() {
 							"Podcast Clips",
 							"Webinar Highlights",
 							"Interview Moments",
-						].map((item, i) => (
+						].map((item) => (
 							<span
-								key={i}
+								key={item}
 								style={{
 									fontSize: "0.8rem",
 									fontWeight: 600,
@@ -589,9 +589,9 @@ function LandingPage() {
 							marginTop: 56,
 						}}
 					>
-						{steps.map((step, i) => (
+						{steps.map((step) => (
 							<div
-								key={i}
+								key={step.num}
 								className="step-card"
 								style={{ background: "var(--card)", padding: "36px 24px" }}
 							>
@@ -669,9 +669,9 @@ function LandingPage() {
 							marginTop: 56,
 						}}
 					>
-						{features.map((f, i) => (
+						{features.map((f) => (
 							<div
-								key={i}
+								key={f.title}
 								className="feature-card"
 								style={{
 									background: "var(--card)",
@@ -830,9 +830,9 @@ function LandingPage() {
 									{ text: "Max 3 clips per video", ok: true },
 									{ text: "Priority queue", ok: false },
 									{ text: "Custom subtitle style", ok: false },
-								].map((item, i) => (
+								].map((item, _i) => (
 									<li
-										key={i}
+										key={item.text}
 										style={{
 											fontSize: "0.87rem",
 											display: "flex",
@@ -954,9 +954,9 @@ function LandingPage() {
 									{ text: "Max 5 clips per video", ok: true },
 									{ text: "Priority queue ⚡", ok: true },
 									{ text: "Custom subtitle style", ok: false },
-								].map((item, i) => (
+								].map((item, _i) => (
 									<li
-										key={i}
+										key={item.text}
 										style={{
 											fontSize: "0.87rem",
 											display: "flex",
@@ -1057,9 +1057,9 @@ function LandingPage() {
 									{ text: "Max 10 clips per video", ok: true },
 									{ text: "Priority queue ⚡", ok: true },
 									{ text: "Custom subtitle style ✨", ok: true },
-								].map((item, i) => (
+								].map((item, _i) => (
 									<li
-										key={i}
+										key={item.text}
 										style={{
 											fontSize: "0.87rem",
 											display: "flex",
@@ -1137,6 +1137,7 @@ function LandingPage() {
 							</p>
 
 							<label
+								htmlFor="vidCount"
 								style={{
 									fontSize: "0.85rem",
 									color: "var(--muted)",
@@ -1150,6 +1151,7 @@ function LandingPage() {
 								</strong>
 							</label>
 							<input
+								id="vidCount"
 								type="range"
 								min={1}
 								max={30}
@@ -1158,6 +1160,7 @@ function LandingPage() {
 							/>
 
 							<label
+								htmlFor="durLevel"
 								style={{
 									fontSize: "0.85rem",
 									color: "var(--muted)",
@@ -1172,6 +1175,7 @@ function LandingPage() {
 								</strong>
 							</label>
 							<input
+								id="durLevel"
 								type="range"
 								min={1}
 								max={3}
@@ -1198,7 +1202,7 @@ function LandingPage() {
 								},
 							].map((row, i) => (
 								<div
-									key={i}
+									key={row.label}
 									style={{
 										display: "flex",
 										justifyContent: "space-between",
@@ -1264,7 +1268,7 @@ function LandingPage() {
 					>
 						{faqs.map((faq, i) => (
 							<div
-								key={i}
+								key={faq.q}
 								style={{
 									background: "var(--card)",
 									border: "1px solid var(--border)",
@@ -1273,6 +1277,7 @@ function LandingPage() {
 								}}
 							>
 								<button
+									type="button"
 									onClick={() => setOpenFaq(openFaq === i ? null : i)}
 									style={{
 										width: "100%",
@@ -1387,15 +1392,11 @@ function LandingPage() {
 					</span>
 					<ul style={{ display: "flex", gap: 24, listStyle: "none" }}>
 						{["Privacy Policy", "Terms of Service", "Kontak"].map(
-							(label, i) => (
-								<li key={i}>
-									<a
-										href="#"
-										className="nav-link"
-										style={{ fontSize: "0.83rem" }}
-									>
+							(label, _i) => (
+								<li key={label}>
+									<span className="nav-link" style={{ fontSize: "0.83rem" }}>
 										{label}
-									</a>
+									</span>
 								</li>
 							),
 						)}
