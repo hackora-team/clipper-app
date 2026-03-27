@@ -29,9 +29,10 @@ COPY apps/platform/package.json ./apps/platform/
 RUN pnpm install --filter platform --frozen-lockfile
 
 COPY --from=builder /app/apps/platform/dist ./apps/platform/dist
+COPY apps/platform/vite.config.ts ./apps/platform/
 
 WORKDIR /app/apps/platform
 
 EXPOSE 3000
 
-CMD ["node", "dist/server/server.js"]
+CMD ["node_modules/.bin/vinxi", "start"]
