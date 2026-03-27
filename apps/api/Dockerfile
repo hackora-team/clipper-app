@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
 # ffmpeg on Alpine includes libass for subtitle burning
-RUN apk add --no-cache ffmpeg
+RUN apk add --no-cache ffmpeg fontconfig ttf-freefont
 
 # Enable pnpm
 RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
