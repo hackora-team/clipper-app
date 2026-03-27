@@ -164,7 +164,7 @@ export function getStoragePath(): string {
 
 export async function initStorage(): Promise<void> {
 	const base = getStoragePath();
-	for (const dir of ["uploads", "temp", "outputs"]) {
+	for (const dir of ["uploads", "temp", "outputs", "chunks"]) {
 		await fs.mkdir(path.join(base, dir), { recursive: true });
 	}
 }
