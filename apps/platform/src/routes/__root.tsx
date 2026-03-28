@@ -56,13 +56,14 @@ function RootComponent() {
 		if (token && isAuthPage) {
 			navigate({ to: "/" });
 		}
-	}, [location.pathname, isAuthPage, navigate]);
+	}, [isAuthPage, navigate]);
 
 	if (isAuthPage) {
 		return <Outlet />;
 	}
 
-	const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+	const token =
+		typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
 	if (!token) {
 		return null;
 	}
