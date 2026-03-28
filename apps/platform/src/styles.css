@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --color-purple-600: #9333ea;
+	--color-purple-600: #9333ea;
 }
 
 @source "./**/*.{ts,tsx}";

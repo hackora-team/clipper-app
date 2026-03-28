@@ -1,4 +1,3 @@
-import { api } from "@/utils/api";
 import {
 	Button,
 	Card,
@@ -12,6 +11,7 @@ import {
 } from "@monorepo/ui";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { api } from "@/utils/api";
 
 export const Route = createFileRoute("/login")({
 	component: RouteComponent,
@@ -57,8 +57,12 @@ function RouteComponent() {
 			<div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(139,92,246,0.1),transparent_50%)]" />
 			<Card className="w-full max-w-md relative z-10 border-purple-500/20">
 				<CardHeader className="text-center space-y-1">
-					<CardTitle className="text-3xl font-bold tracking-tight text-white">Welcome</CardTitle>
-					<CardDescription>Enter your credentials to access your account</CardDescription>
+					<CardTitle className="text-3xl font-bold tracking-tight text-white">
+						Welcome
+					</CardTitle>
+					<CardDescription>
+						Enter your credentials to access your account
+					</CardDescription>
 				</CardHeader>
 				<form onSubmit={handleLogin}>
 					<CardContent className="space-y-4">
@@ -94,7 +98,10 @@ function RouteComponent() {
 						/>
 						<p className="text-sm text-white/50">
 							Don't have an account?{" "}
-							<Link to="/register" className="text-purple-400 hover:text-purple-300 transition-colors">
+							<Link
+								to="/register"
+								className="text-purple-400 hover:text-purple-300 transition-colors"
+							>
 								Sign up
 							</Link>
 						</p>

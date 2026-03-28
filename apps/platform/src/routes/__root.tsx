@@ -1,8 +1,8 @@
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import {
-	Outlet,
 	createRootRoute,
 	HeadContent,
+	Outlet,
 	Scripts,
 	useLocation,
 	useNavigate,
@@ -69,12 +69,12 @@ function Header() {
 		<header className="sticky top-0 z-50 w-full border-b border-purple-500/20 bg-black/80 backdrop-blur-md">
 			<div className="flex h-14 items-center justify-between px-6">
 				<div className="flex items-center gap-2">
-					<span className="text-lg font-semibold text-white tracking-tight">Clipper</span>
+					<span className="text-lg font-semibold text-white tracking-tight">
+						Clipper
+					</span>
 				</div>
 				<div className="flex items-center gap-4">
-					{email && (
-						<span className="text-sm text-purple-300/80">{email}</span>
-					)}
+					{email && <span className="text-sm text-purple-300/80">{email}</span>}
 					<button
 						type="button"
 						onClick={handleLogout}

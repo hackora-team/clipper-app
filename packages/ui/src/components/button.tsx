@@ -5,10 +5,17 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 	variant?: "primary" | "outline" | "ghost";
 }
 
-export const Button = ({ label, variant = "primary", className = "", ...props }: ButtonProps) => {
+export const Button = ({
+	label,
+	variant = "primary",
+	className = "",
+	...props
+}: ButtonProps) => {
 	const variants = {
-		primary: "bg-purple-600 text-white hover:bg-purple-700 shadow-[0_0_15px_rgba(139,92,246,0.5)]",
-		outline: "border border-white/10 bg-transparent text-white hover:bg-white/5",
+		primary:
+			"bg-purple-600 text-white hover:bg-purple-700 shadow-[0_0_15px_rgba(139,92,246,0.5)]",
+		outline:
+			"border border-white/10 bg-transparent text-white hover:bg-white/5",
 		ghost: "bg-transparent text-white/70 hover:bg-white/5 hover:text-white",
 	};
 
