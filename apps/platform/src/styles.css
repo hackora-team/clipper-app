@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+@theme {
+	--color-purple-600: #9333ea;
+}
+
+@source "./**/*.{ts,tsx}";
+@source "../../../packages/ui/src/**/*.{ts,tsx}";
 :root {
 	color-scheme: dark;
 }

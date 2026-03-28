@@ -1,15 +1,27 @@
 import { serve } from "@hono/node-server";
+import "dotenv/config";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { HTTPException } from "hono/http-exception";
 import { createWorker } from "./lib/worker";
+import { authRouter } from "./modules/auth/route";
 import { clipRoute } from "./routes/clip.route";
 import { jobRoute } from "./routes/job.route";
 import { uploadRoute } from "./routes/upload.route";
 import { startCronJobs } from "./services/cron.service";
 import { initStorage } from "./services/ffmpeg.service";
 
-const app = new Hono();
+const app = new Hono()
+	.use(cors())
+	.route("/auth", authRouter)
+	.onError((err, c) => {
+		if (err instanceof HTTPException) {
+			return c.json({ message: err.message }, err.status);
+		}
+		return c.json({ message: "Internal server error" }, 500);
+	});
 
+export type AppType = typeof app;
 const corsOrigins = process.env.CORS_ORIGIN
 	? process.env.CORS_ORIGIN.split(",")
 	: ["http://localhost:3000", "http://localhost:3001", "http://localhost:4000"];

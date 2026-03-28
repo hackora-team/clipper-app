@@ -1,5 +1,14 @@
+import {
+	createRootRoute,
+	HeadContent,
+	Outlet,
+	Scripts,
+	useLocation,
+} from "@tanstack/react-router";
+
+import "../styles.css";
+import "@monorepo/ui/globals.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { Navbar } from "../components/navbar";
 
 import appCss from "../styles.css?url";
@@ -27,7 +36,28 @@ export const Route = createRootRoute({
 		links: [{ rel: "stylesheet", href: appCss }],
 	}),
 	shellComponent: RootDocument,
+	component: RootComponent,
 });
+
+const AUTH_ROUTES = ["/login", "/register"];
+
+function RootComponent() {
+	const location = useLocation();
+	const isAuthPage = AUTH_ROUTES.includes(location.pathname);
+
+	if (isAuthPage) {
+		return <Outlet />;
+	}
+
+	return (
+		<div className="min-h-screen bg-black text-white">
+			<Navbar />
+			<main>
+				<Outlet />
+			</main>
+		</div>
+	);
+}
 
 function RootDocument({ children }: { children: React.ReactNode }) {
 	return (
@@ -37,8 +67,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			</head>
 			<body>
 				<QueryClientProvider client={queryClient}>
-					<Navbar />
-					<main>{children}</main>
+					{children}
 				</QueryClientProvider>
 				<Scripts />
 			</body>

@@ -6,7 +6,7 @@
 	"main": "index.js",
 	"exports": {
 		".": "./src/index.ts",
-		"./globals.css": "./dist/globals.css"
+		"./globals.css": "./src/globals.css"
 	},
 	"scripts": {
 		"dev": "pnpm dlx @tailwindcss/cli -i ./src/globals.css -o ./dist/globals.css --watch"
