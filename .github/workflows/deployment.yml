@@ -1,4 +1,4 @@
-name: "CI/CD"
+name: CI/CD
 
 on:
     pull_request:
@@ -8,6 +8,10 @@ on:
         branches:
             - main
 
+env:
+    REGISTRY: ghcr.io
+    API_IMAGE: ghcr.io/${{ github.repository_owner }}/clipper-api
+    PLATFORM_IMAGE: ghcr.io/${{ github.repository_owner }}/clipper-platform
 
 jobs:
     pr-check:
@@ -18,34 +22,107 @@ jobs:
 
             - uses: pnpm/action-setup@v4
               with:
-                version: 10.22.0
+                  version: 10.22.0
 
             - uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: pnpm
 
             - name: Install Dependencies
               run: pnpm install
 
             - name: Lint
               run: pnpm lint
-        
+
+            - name: Generate Prisma Client
+              run: pnpm --filter api exec prisma generate
+
+            - name: Type Check
+              run: pnpm --filter api exec tsc --noEmit
+
     deploy:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
         steps:
             - uses: actions/checkout@v4
 
             - uses: pnpm/action-setup@v4
               with:
-                version: 10.22.0
+                  version: 10.22.0
 
             - uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: pnpm
 
             - name: Install Dependencies
               run: pnpm install
 
             - name: Lint
-              run: pnpm lint     
+              run: pnpm lint
 
-            - name: Deploy to server
-              run: echo "Deploying to server [MOCK]"   
+            - name: Generate Prisma Client
+              run: pnpm --filter api exec prisma generate
 
+            - name: Type Check
+              run: pnpm --filter api exec tsc --noEmit
+
+            - name: Login to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Build & Push API image
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: apps/api/Dockerfile
+                  push: true
+                  tags: ${{ env.API_IMAGE }}:latest,${{ env.API_IMAGE }}:${{ github.sha }}
+
+            - name: Build & Push Platform image
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: apps/platform/Dockerfile
+                  push: true
+                  tags: ${{ env.PLATFORM_IMAGE }}:latest,${{ env.PLATFORM_IMAGE }}:${{ github.sha }}
+                  build-args: |
+                      VITE_API_URL=https://clipper.tesielts.id
+
+            - name: Deploy to VPS
+              uses: appleboy/ssh-action@v1
+              env:
+                  GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GHCR_ACTOR: ${{ github.actor }}
+              with:
+                  host: ${{ secrets.VPS_HOST }}
+                  username: ${{ secrets.VPS_USER }}
+                  key: ${{ secrets.VPS_SSH_KEY }}
+                  port: ${{ secrets.VPS_PORT }}
+                  envs: GHCR_TOKEN,GHCR_ACTOR
+                  script: |
+                      cd /opt/clipper
+
+                      # Login to ghcr.io
+                      echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
+
+                      # Pull latest images
+                      docker compose -f docker-compose.prod.yml pull api platform
+
+                      # Ensure db is running before migration
+                      docker compose -f docker-compose.prod.yml up -d db redis
+                      sleep 5
+
+                      # Run Prisma migrations
+                      docker compose -f docker-compose.prod.yml run --rm api \
+                        sh -c "cd apps/api && /app/node_modules/.bin/prisma migrate deploy"
+
+                      # Start all services
+                      docker compose -f docker-compose.prod.yml up -d --remove-orphans

@@ -45,3 +45,7 @@ lerna-debug.log*
 
 
 **/generated/prisma
+
+.pnpm-store/
+
+apps/api/storage/
