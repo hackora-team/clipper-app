@@ -4,7 +4,9 @@ import {
 	Outlet,
 	Scripts,
 	useLocation,
+	useNavigate,
 } from "@tanstack/react-router";
+import { useEffect } from "react";
 
 import "../styles.css";
 import "@monorepo/ui/globals.css";
@@ -43,10 +45,26 @@ const AUTH_ROUTES = ["/login", "/register"];
 
 function RootComponent() {
 	const location = useLocation();
+	const navigate = useNavigate();
 	const isAuthPage = AUTH_ROUTES.includes(location.pathname);
+
+	useEffect(() => {
+		const token = localStorage.getItem("accessToken");
+		if (!token && !isAuthPage) {
+			navigate({ to: "/login" });
+		}
+		if (token && isAuthPage) {
+			navigate({ to: "/" });
+		}
+	}, [location.pathname, isAuthPage, navigate]);
 
 	if (isAuthPage) {
 		return <Outlet />;
+	}
+
+	const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+	if (!token) {
+		return null;
 	}
 
 	return (
