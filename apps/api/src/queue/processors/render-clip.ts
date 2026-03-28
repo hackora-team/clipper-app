@@ -12,7 +12,7 @@ import {
 	concatVideos,
 	cutAndCropVertical,
 	getStoragePath,
-	getVideoWidth,
+	getVideoDimensions,
 } from "../../services/ffmpeg.service";
 import { generateSubtitlesAndFinalizeClip } from "../../services/subtitle.service";
 import type { WordTimestamp } from "../../services/transcription.service";
@@ -45,8 +45,10 @@ export async function renderClipProcessor(job: Job): Promise<void> {
 
 		if (aspectRatio === "9:16" && videoPath) {
 			// --- 9:16 vertical path with speaker tracking ---
-			const videoWidth = await getVideoWidth(videoPath);
-			const cropW = Math.floor(videoWidth * (9 / 16));
+			const { width: videoWidth, height: videoHeight } =
+				await getVideoDimensions(videoPath);
+			// FFmpeg crops using ih*(9/16) as the width, so cropW must match
+			const cropW = Math.floor(videoHeight * (9 / 16));
 			const maxCropX = videoWidth - cropW;
 			const centerCropX = Math.floor((videoWidth - cropW) / 2);
 

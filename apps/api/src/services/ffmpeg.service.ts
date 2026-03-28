@@ -171,6 +171,18 @@ export function getVideoWidth(videoPath: string): Promise<number> {
 	});
 }
 
+export function getVideoDimensions(
+	videoPath: string,
+): Promise<{ width: number; height: number }> {
+	return new Promise((resolve, reject) => {
+		ffmpeg.ffprobe(videoPath, (err, metadata) => {
+			if (err) return reject(new Error(`ffprobe: ${err.message}`));
+			const stream = metadata.streams.find((s) => s.codec_type === "video");
+			resolve({ width: stream?.width ?? 1920, height: stream?.height ?? 1080 });
+		});
+	});
+}
+
 export function cutAndCropVertical(
 	inputPath: string,
 	outputPath: string,

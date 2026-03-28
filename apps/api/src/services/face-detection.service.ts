@@ -59,9 +59,12 @@ export function buildSpeakerSegments(
 	return merged;
 }
 
+const SAMPLES_PER_SPEAKER = 3;
+
 /**
- * For each unique speaker, extracts a frame at the midpoint of their first
- * substantial segment, then asks Gemini Flash to return face X positions.
+ * For each unique speaker, extracts SAMPLES_PER_SPEAKER frames spread across
+ * their first substantial segment, sends them all in one Gemini call, and
+ * averages the x_center results. No speaker ordering assumption.
  *
  * Returns: { speaker_0: 480, speaker_1: 1421 }  (pixel x in source video)
  */
@@ -78,7 +81,7 @@ export async function detectSpeakerFacePositions(
 		allWords,
 		allWords[0].start,
 		allWords[allWords.length - 1].end,
-		3, // need at least 3s for a representative frame
+		3, // need at least 3s for representative frames
 	);
 
 	// Find first substantial segment per speaker
@@ -95,73 +98,92 @@ export async function detectSpeakerFacePositions(
 	const frameFiles: string[] = [];
 
 	try {
-		// Extract one frame per speaker at their first segment midpoint
 		const speakerIds = [...firstSegmentBySpeaker.keys()];
+
+		// Extract SAMPLES_PER_SPEAKER frames per speaker spread across their segment
+		const speakerFramePaths = new Map<string, string[]>();
 		await Promise.all(
 			speakerIds.map(async (sid) => {
 				const seg = firstSegmentBySpeaker.get(sid);
 				if (!seg) return;
-				const ts = (seg.start + seg.end) / 2;
-				const framePath = path.join(tempDir, `face_${sid}_${Date.now()}.jpg`);
-				frameFiles.push(framePath);
-				await extractFrame(videoPath, framePath, ts);
+				const duration = seg.end - seg.start;
+				const paths: string[] = [];
+				for (let i = 0; i < SAMPLES_PER_SPEAKER; i++) {
+					// Sample at 25%, 50%, 75% (or evenly spaced for other counts)
+					const fraction = (i + 1) / (SAMPLES_PER_SPEAKER + 1);
+					const ts = seg.start + duration * fraction;
+					const framePath = path.join(
+						tempDir,
+						`face_${sid}_${i}_${Date.now()}.jpg`,
+					);
+					frameFiles.push(framePath);
+					await extractFrame(videoPath, framePath, ts);
+					paths.push(framePath);
+				}
+				speakerFramePaths.set(sid, paths);
 			}),
 		);
 
-		// Use the first speaker's frame — both faces appear in every frame
-		// for static podcast setups
-		const primaryFrame = frameFiles[0];
-		const imageBuffer = await fs.readFile(primaryFrame);
-		const base64 = imageBuffer.toString("base64");
+		// For each speaker, send all their frames in one Gemini call and average results
+		const result: Record<string, number> = {};
+		await Promise.all(
+			speakerIds.map(async (sid) => {
+				const paths = speakerFramePaths.get(sid);
+				if (!paths || paths.length === 0) return;
 
-		const response = await openrouter.chat.completions.create({
-			model: "google/gemini-2.5-flash-preview",
-			messages: [
-				{
-					role: "user",
-					content: [
+				const imageContents = await Promise.all(
+					paths.map(async (p) => {
+						const buf = await fs.readFile(p);
+						return buf.toString("base64");
+					}),
+				);
+
+				const response = await openrouter.chat.completions.create({
+					model: "google/gemini-2.5-flash-preview",
+					messages: [
 						{
-							type: "image_url",
-							image_url: { url: `data:image/jpeg;base64,${base64}` },
-						},
-						{
-							type: "text",
-							text: `This is a frame from a podcast or interview video.
-Detect all human faces visible in the image.
-Return ONLY a valid JSON array of face positions — no markdown, no explanation.
-Format: [{"x_center": 0.25}, {"x_center": 0.74}]
-x_center = horizontal center of each face as a fraction of image width (0.0 = left edge, 1.0 = right edge).
-Sort by x_center ascending (leftmost face first).
-If no faces are detected, return [].`,
+							role: "user",
+							content: [
+								...imageContents.map((b64, i) => ({
+									type: "image_url" as const,
+									image_url: {
+										url: `data:image/jpeg;base64,${b64}`,
+									},
+									...(i === 0 ? {} : {}),
+								})),
+								{
+									type: "text" as const,
+									text: `These ${paths.length} frames are from a podcast/interview, all captured while the SAME person is actively speaking.
+Identify the active speaker's face in each frame and return their horizontal center position.
+Return ONLY valid JSON — no markdown, no explanation.
+Format: {"x_centers": [0.32, 0.34, 0.33]}
+x_center = horizontal center as a fraction of image width (0.0 = left edge, 1.0 = right edge), one value per frame in order.
+If a face is not detected in a frame, omit that frame's value.
+If no faces detected at all, return {"x_centers": []}.`,
+								},
+							],
 						},
 					],
-				},
-			],
-			max_tokens: 128,
-		});
+					max_tokens: 128,
+				});
 
-		const raw = response.choices[0]?.message?.content?.trim() ?? "[]";
-		const cleaned = raw
-			.replace(/```(?:json)?\s*/g, "")
-			.replace(/```/g, "")
-			.trim();
-		const faces = JSON.parse(cleaned) as Array<{ x_center: number }>;
-
-		if (faces.length === 0) return {};
-
-		// Map speaker_id → face x pixel position
-		// First speaker by speech order → leftmost face, etc.
-		const speakersByOrder = speakerIds.slice().sort((a, b) => {
-			const aStart = firstSegmentBySpeaker.get(a)?.start;
-			const bStart = firstSegmentBySpeaker.get(b)?.start;
-			return aStart - bStart;
-		});
-
-		const result: Record<string, number> = {};
-		for (let i = 0; i < speakersByOrder.length; i++) {
-			const face = faces[i] ?? faces[faces.length - 1];
-			result[speakersByOrder[i]] = Math.round(face.x_center * videoWidth);
-		}
+				const raw = response.choices[0]?.message?.content?.trim() ?? "{}";
+				const cleaned = raw
+					.replace(/```(?:json)?\s*/g, "")
+					.replace(/```/g, "")
+					.trim();
+				const parsed = JSON.parse(cleaned) as {
+					x_centers?: number[];
+				};
+				const xCenters = parsed.x_centers?.filter(
+					(x) => typeof x === "number" && x >= 0 && x <= 1,
+				);
+				if (xCenters && xCenters.length > 0) {
+					const avg = xCenters.reduce((sum, x) => sum + x, 0) / xCenters.length;
+					result[sid] = Math.round(avg * videoWidth);
+				}
+			}),
+		);
 
 		return result;
 	} catch {
