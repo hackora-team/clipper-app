@@ -22,6 +22,8 @@ model RefreshToken {
   expiresAt  DateTime
   lastUsedAt DateTime @default(now())
   createdAt  DateTime @default(now())
+}
+
 enum JobStatus {
   PENDING
   EXTRACTING_AUDIO
