@@ -11,6 +11,7 @@ import {
 } from "@monorepo/ui";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { toast } from "sonner";
 import { api } from "@/utils/api";
 
 export const Route = createFileRoute("/login")({
@@ -36,7 +37,7 @@ function RouteComponent() {
 
 			if (!res.ok) {
 				const error = await res.json();
-				console.error(error);
+				toast.error((error as { message?: string }).message ?? "Login failed");
 				return;
 			}
 
@@ -46,7 +47,6 @@ function RouteComponent() {
 			setEmail("");
 			setPassword("");
 			navigate({ to: "/" });
-			return data;
 		} finally {
 			setIsLoading(false);
 		}

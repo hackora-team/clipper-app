@@ -11,6 +11,7 @@ import { useEffect } from "react";
 import "../styles.css";
 import "@monorepo/ui/globals.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "sonner";
 import { Navbar } from "../components/navbar";
 
 import appCss from "../styles.css?url";
@@ -87,6 +88,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			<body>
 				<QueryClientProvider client={queryClient}>
 					{children}
+					<Toaster richColors position="top-right" />
 				</QueryClientProvider>
 				<Scripts />
 			</body>

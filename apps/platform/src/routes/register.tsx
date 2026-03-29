@@ -9,8 +9,9 @@ import {
 	Input,
 	Label,
 } from "@monorepo/ui";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { toast } from "sonner";
 import { api } from "@/utils/api";
 
 export const Route = createFileRoute("/register")({
@@ -18,6 +19,7 @@ export const Route = createFileRoute("/register")({
 });
 
 function RouteComponent() {
+	const navigate = useNavigate();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
@@ -35,14 +37,14 @@ function RouteComponent() {
 
 			if (!res.ok) {
 				const error = await res.json();
-				console.error(error);
+				toast.error(
+					(error as { message?: string }).message ?? "Registration failed",
+				);
 				return;
 			}
 
-			const data = await res.json();
-			setEmail("");
-			setPassword("");
-			return data;
+			toast.success("Account created! Please sign in.");
+			navigate({ to: "/login" });
 		} finally {
 			setIsLoading(false);
 		}
