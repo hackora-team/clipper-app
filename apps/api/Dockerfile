@@ -20,6 +20,7 @@ RUN pnpm install --filter api --frozen-lockfile
 # Copy source
 COPY apps/api/src ./apps/api/src
 COPY apps/api/tsconfig.json ./apps/api/
+COPY apps/api/tsup.config.ts ./apps/api/
 
 # Generate Prisma client and build
 RUN pnpm --filter api exec prisma generate
