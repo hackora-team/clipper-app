@@ -11,8 +11,24 @@ import { uploadRoute } from "./routes/upload.route";
 import { startCronJobs } from "./services/cron.service";
 import { initStorage } from "./services/ffmpeg.service";
 
+const corsOrigins = process.env.CORS_ORIGIN
+	? process.env.CORS_ORIGIN.split(",")
+	: ["http://localhost:3000", "http://localhost:3001", "http://localhost:4000"];
+
 const app = new Hono()
-	.use(cors())
+	.use(
+		"*",
+		cors({
+			origin: corsOrigins,
+			allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+			allowHeaders: [
+				"Content-Type",
+				"Authorization",
+				"X-Chunk-Index",
+				"X-Chunk-Total",
+			],
+		}),
+	)
 	.route("/auth", authRouter)
 	.onError((err, c) => {
 		if (err instanceof HTTPException) {
@@ -22,23 +38,6 @@ const app = new Hono()
 	});
 
 export type AppType = typeof app;
-const corsOrigins = process.env.CORS_ORIGIN
-	? process.env.CORS_ORIGIN.split(",")
-	: ["http://localhost:3000", "http://localhost:3001", "http://localhost:4000"];
-
-app.use(
-	"*",
-	cors({
-		origin: corsOrigins,
-		allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-		allowHeaders: [
-			"Content-Type",
-			"Authorization",
-			"X-Chunk-Index",
-			"X-Chunk-Total",
-		],
-	}),
-);
 
 app.get("/", (c) => c.json({ status: "ok", service: "clipper-api" }));
 
