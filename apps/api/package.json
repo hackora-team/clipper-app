@@ -3,7 +3,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "pnpm with-env tsx watch src/index.ts",
-		"build": "tsup src/index.ts --format esm --out-dir dist --no-splitting",
+		"build": "tsup src/index.ts --format esm --out-dir dist --no-splitting --platform node",
 		"start": "node dist/index.js",
 		"with-env": "dotenv -e ../../.env --",
 		"db:migrate": "pnpm prisma migrate dev",
